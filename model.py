@@ -7,9 +7,10 @@ from ultralytics import YOLO
 from pathlib import Path
 
 model = YOLO("yolo26n.pt")
+frame_path = Path("assest") / "frames" / "Van Vs Royval/frame_00400.jpg"
 
 def detect_single_frame(model : YOLO, frame_path: Path) -> tuple[list[Any], list[Any]]:
-    results = model("C:/Users/dly/MMAStrikingDetector/assets/frames/Van Vs Royval/frame_00400.jpg",
+    results = model(frame_path,
                     classes=[0])
 
     xyxys = [box.xyxy for box in results[0].boxes]
