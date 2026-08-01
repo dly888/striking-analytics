@@ -10,6 +10,7 @@ from pathlib import Path
 
 model = YOLO("yolo26n-pose.pt")
 frame_path = Path("assets") / "frames" / "Van Vs Royval" / "frame_00400.jpg"
+video_path = Path("assets") / "clips" / "Joshua Van vs Brandon Royval ｜ FULL FIGHT ｜ UFC 328 [nwO2UPz7p28].webm"
 
 TEST_WRIST_TRACK = [
     (100, 200, 0.95),
@@ -42,7 +43,7 @@ def get_keypoints_on_single_frame(model: YOLO, frame_path: Path) -> Any:
 
     return keypoints
 
-def get_person_keypoints(model: YOLO, frame_path: Path, person_id: int) -> dict[str, tuple[float, float, float]]:
+def get_frame_person_keypoints(model: YOLO, frame_path: Path, person_id: int) -> dict[str, tuple[float, float, float]]:
     results = model(source=str(frame_path))
     person_keypoints = results[0].keypoints[person_id]
 
@@ -76,14 +77,77 @@ def get_person_keypoints(model: YOLO, frame_path: Path, person_id: int) -> dict[
 
     return keypoint_tracker
 
+def get_video_person_keypoints(model: YOLO,
+                               video_path: Path,
+                               person_id: int,
+                               conf_threshold=0.4)\
+                               -> dict[int, dict[str, tuple[float, float, float] | None]]:
+    KEYPOINT_NAMES = {
+        0: "nose",
+        1: "left_eye",
+        2: "right_eye",
+        3: "left_ear",
+        4: "right_ear",
+        5: "left_shoulder",
+        6: "right_shoulder",
+        7: "left_elbow",
+        8: "right_elbow",
+        9: "left_wrist",
+        10: "right_wrist",
+        11: "left_hip",
+        12: "right_hip",
+        13: "left_knee",
+        14: "right_knee",
+        15: "left_ankle",
+        16: "right_ankle",
+    }
 
-def wrist_velocity(wrist_track, fps, conf_threshold=0.5, max_hold=6) -> list[float]:
+    keypoint_tracker = {}
+
+    results = model.track(
+        source=video_path,
+        persist=True,
+        stream=True,
+        tracker="botsort.yaml",
+        classes=[0]
+    )
+
+    for frame_idx, result in enumerate(results):
+        if result.boxes.id is None:
+            continue
+
+        ids = result.boxes.id.int().tolist()
+
+        if person_id not in ids:
+            continue
+
+        i = ids.index(person_id)
+        xy = result.keypoints.xy[i]
+        conf = result.keypoints.conf[i]
+
+        current_keypoints = {}
+
+        for k, name in KEYPOINT_NAMES.items():
+            c = round(conf[k].item(), 2)
+            current_keypoints[name] = (
+                None if c < conf_threshold
+                else (round(xy[k, 0].item(), 2), round(xy[k, 1].item(), 2), c)
+            )
+
+        keypoint_tracker[frame_idx] = current_keypoints
+
+    return keypoint_tracker
+
+def get_wrist_tracker(keypoint_tracker: dict[int, dict[str, tuple[float]]]) -> list[float]:
+    pass
+
+def wrist_velocity(wrist_tracker, fps, conf_threshold=0.5, max_hold=6) -> list[float]:
     velocities = []
     anchor_pos = None        # last OBSERVED (x, y)
     anchor_frame = None      # frame index it was observed at
     hold_count = 0
 
-    for i, (x, y, conf) in enumerate(wrist_track):
+    for i, (x, y, conf) in enumerate(wrist_tracker):
         if conf >= conf_threshold:
             if anchor_pos is None:
                 velocities.append(float("nan"))
@@ -121,5 +185,13 @@ def annotate_single_frame(model: YOLO, frame_path: Path) -> None:
 # print(get_keypoints_on_single_frame(model=model, frame_path=frame_path))
 # print(get_person_keypoints(model=model, frame_path=frame_path, person_id=0))
 # annotate_single_frame(model=model, frame_path=frame_path)
-for i, v in enumerate(wrist_velocity(TEST_WRIST_TRACK, fps=29.97)):
-    print(i, v)
+
+# for i, v in enumerate(wrist_velocity(TEST_WRIST_TRACK, fps=29.97)):
+#     print(i, v)
+
+# keypoint_tracker = get_video_person_keypoints(model=model,
+#                            video_path=video_path,
+#                            person_id=1)
+#
+# print(keypoint_tracker)
+# print(len(keypoint_tracker))
