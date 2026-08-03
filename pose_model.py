@@ -68,44 +68,12 @@ def get_fps(video_path: Path) -> float:
     return fps
 
 
-def get_id_tracker(model: YOLO, video_path: Path) -> dict:
-    id_tracker = {}
-
-    results = model.track(
-        source=video_path,
-        persist=True,
-        stream=True,
-        tracker="bytetrack.yaml",
-        classes=[0],
-    )
-
-    for frame_idx, result in enumerate(results):
-        for detection_idx, (track_id, box, conf) in enumerate(
-            zip(
-                result.boxes.id,
-                result.boxes.xyxy,
-                result.boxes.conf,
-            ),
-            start=1,
-        ):
-            track_id = int(track_id)
-
-            if track_id not in id_tracker:
-                id_tracker[track_id] = []
-
-            id_tracker[track_id].append(
-                [frame_idx, box.tolist(), round(float(conf), 2)]
-            )
-
-    return id_tracker
-
-
-def get_top_n_ids(id_tracker: dict, n=2):
-    top_n_ids = sorted(id_tracker.items(), key=lambda item: len(item[1]), reverse=True)[
-        :n
-    ]
-
-    return top_n_ids
+def get_top_n_ids(person_tracker: dict, n=2):
+    return sorted(
+        person_tracker.items(),
+        key=lambda item: len(item[1]["boxes"]),
+        reverse=True,
+    )[:n]
 
 
 def get_keypoints_on_single_frame(model: YOLO, frame_path: Path) -> Any:
@@ -154,95 +122,6 @@ def get_frame_person_keypoints(
     return keypoint_tracker
 
 
-def get_video_person_keypoints(
-    model: YOLO, video_path: Path, person_id: int, conf_threshold=0.5
-) -> tuple[dict[Any, Any], int]:
-    KEYPOINT_NAMES = {
-        0: "nose",
-        1: "left_eye",
-        2: "right_eye",
-        3: "left_ear",
-        4: "right_ear",
-        5: "left_shoulder",
-        6: "right_shoulder",
-        7: "left_elbow",
-        8: "right_elbow",
-        9: "left_wrist",
-        10: "right_wrist",
-        11: "left_hip",
-        12: "right_hip",
-        13: "left_knee",
-        14: "right_knee",
-        15: "left_ankle",
-        16: "right_ankle",
-    }
-
-    keypoint_tracker = {}
-    frames_processed = 0
-
-    results = model.track(
-        source=video_path,
-        persist=True,
-        stream=True,
-        tracker="bytetrack.yaml",
-        classes=[0],
-    )
-
-    for frame_idx, result in enumerate(results):
-        if result.boxes.id is None:
-            frames_processed += 1
-            continue
-
-        ids = result.boxes.id.int().tolist()
-
-        if person_id not in ids:
-            frames_processed += 1
-            continue
-
-        i = ids.index(person_id)
-        xy = result.keypoints.xy[i]
-        conf = result.keypoints.conf[i]
-
-        current_keypoints = {}
-
-        for k, name in KEYPOINT_NAMES.items():
-            c = round(conf[k].item(), 2)
-            current_keypoints[name] = (
-                (None, None, None)
-                if c < conf_threshold
-                else (
-                    round(xy[k, 0].item(), 2),
-                    round(xy[k, 1].item(), 2),
-                    c,
-                )
-            )
-        frames_processed += 1
-        keypoint_tracker[frame_idx] = current_keypoints
-
-    return keypoint_tracker, frames_processed
-
-
-def get_wrist_tracker(
-    keypoint_tracker: dict[int, dict[str, tuple[float, float, float] | None]],
-    frames_processed: int,
-    hand="left",
-) -> list[float | None]:
-
-    wrist_tracker = [(None, None, None)] * frames_processed
-    hand = hand.lower()
-
-    if hand != "left" and hand != "right":
-        raise ValueError("Invalid input for hand.")
-
-    for frame_idx, keypoints in keypoint_tracker.items():
-        if hand == "left":
-            wrist_tracker[frame_idx] = keypoints["left_wrist"]
-        else:
-            wrist_tracker[frame_idx] = keypoints["right_wrist"]
-
-    return wrist_tracker
-
-
 def get_wrist_velocities(
     wrist_tracker: list[tuple[float | None, float | None, float | None]],
     fps: float,
@@ -279,7 +158,7 @@ def get_wrist_velocities(
     return np.array(velocities)
 
 
-def get_keypoint_trackers(
+def get_punch_trackers(
     keypoint_tracker: dict[int, dict[str, tuple[float, float, float] | None]],
     frames_processed: int,
     side="left",
@@ -305,6 +184,85 @@ def get_keypoint_trackers(
             elbow_tracker[frame_idx] = keypoints["right_elbow"]
 
     return shoulder_tracker, elbow_tracker, wrist_tracker
+
+def get_person_tracker(model: YOLO, video_path: Path, conf_threshold=0.4):
+    KEYPOINT_NAMES = {
+        0: "nose",
+        1: "left_eye",
+        2: "right_eye",
+        3: "left_ear",
+        4: "right_ear",
+        5: "left_shoulder",
+        6: "right_shoulder",
+        7: "left_elbow",
+        8: "right_elbow",
+        9: "left_wrist",
+        10: "right_wrist",
+        11: "left_hip",
+        12: "right_hip",
+        13: "left_knee",
+        14: "right_knee",
+        15: "left_ankle",
+        16: "right_ankle",
+    }
+
+    person_tracker = {}
+    frames_processed = 0
+
+    results = model.track(
+        source=video_path,
+        persist=True,
+        tracker="bytetrack.yaml",
+        stream=True,
+        classes=[0]
+    )
+
+    for frame_idx, result in enumerate(results):
+        frames_processed += 1
+
+        if result.boxes.id is None:
+            continue
+
+        ids = result.boxes.id.int().tolist()
+
+        for det_idx, (track_id, box, conf) in enumerate(
+                zip(
+                    ids,
+                    result.boxes.xyxy,
+                    result.boxes.conf,
+                )
+        ):
+            if track_id not in person_tracker:
+                person_tracker[track_id] = {
+                    "boxes": [],
+                    "keypoints": {}
+                }
+
+            xy = result.keypoints.xy[det_idx]
+            keypoint_conf = result.keypoints.conf[det_idx]
+            current_keypoints = {}
+
+            for k, name in KEYPOINT_NAMES.items():
+                c = round(keypoint_conf[k].item(), 2)
+                current_keypoints[name] = (
+                    (None, None, None)
+                    if c < conf_threshold
+                    else (
+                        round(xy[k, 0].item(), 2),
+                        round(xy[k, 1].item(), 2),
+                        c,
+                    )
+                )
+
+            person_tracker[track_id]["boxes"].append(
+                [frame_idx, box.tolist(), round(float(conf), 2)]
+
+            )
+            person_tracker[track_id]["keypoints"][frame_idx] = current_keypoints
+
+
+    return person_tracker, frames_processed
+
 
 def get_velocity_percentiles(velocities: np.ndarray) -> dict[Any, Any]:
     percentiles = [90, 95, 99]
@@ -460,12 +418,11 @@ def get_stats(
 # for i, v in enumerate(wrist_velocity(TEST_WRIST_TRACK, fps=29.97)):
 #     print(i, v)
 
-id_tracker = get_id_tracker(model=model, video_path=video_path)
-top_2_ids = get_top_n_ids(id_tracker=id_tracker, n=2)
-
-keypoint_tracker, frames_processed = get_video_person_keypoints(
-    model=model, video_path=video_path, person_id=top_2_ids[0][0]
-)
+# id_tracker = get_id_tracker(model=model, video_path=video_path)
+#
+# keypoint_tracker, frames_processed = get_video_person_keypoints(
+#     model=model, video_path=video_path, person_id=top_2_ids[0][0]
+# )
 #
 # print(keypoint_tracker)
 # print(len(keypoint_tracker))
@@ -495,7 +452,11 @@ fps = get_fps(video_path=video_path)
 # inspect_frame_pair(keypoint_tracker=keypoint_tracker, frame=frame_idx)
 # inspect_frame_pair(keypoint_tracker=keypoint_tracker, frame=frame_idx - 1)
 
-shoulder_tracker, elbow_tracker, wrist_tracker = get_keypoint_trackers(
+tracker, frames_processed = get_person_tracker(model=model, video_path=video_path, conf_threshold=0.4)
+top_2_ids = get_top_n_ids(person_tracker=tracker)
+keypoint_tracker = tracker[top_2_ids[0][0]]["keypoints"]
+
+shoulder_tracker, elbow_tracker, wrist_tracker = get_punch_trackers(
     keypoint_tracker=keypoint_tracker,
     frames_processed=frames_processed,
     side="left"
