@@ -29,7 +29,7 @@ def track_fighters(clip_path: Path, model: YOLO, max_frame: int) -> dict:
             break
 
         result = model.track(
-            source=frame, persist=True, classes=[0], tracker="botsort.yaml"
+            source=frame, persist=True, classes=[0], tracker="bytetrack.yaml"
         )
 
         current_result = result[0]
@@ -128,7 +128,7 @@ def annotate_video(video_path: Path, file_name: str, model: YOLO) -> None:
             break
 
         results = model.track(
-            source=frame, persist=True, classes=[0], tracker="botsort.yaml"
+            source=frame, persist=True, classes=[0], tracker="bytetrack.yaml"
         )
 
         annotated_frame = results[0].plot()
