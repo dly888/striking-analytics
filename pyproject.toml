@@ -10,3 +10,8 @@ dependencies = [
     "opencv-python>=5.0.0.93",
     "ultralytics>=8.4.105",
 ]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.16.1",
+]
