@@ -1,5 +1,6 @@
 import subprocess
 
+
 def download_clip():
     url = input("Enter YouTube URL: ")
     start = input("Start time (MM:SS): ")
@@ -7,11 +8,14 @@ def download_clip():
 
     command = [
         "yt-dlp",
-        "--download-sections", f"*{start}-{end}",
+        "--download-sections",
+        f"*{start}-{end}",
         "--force-keyframes-at-cuts",
-        "-f", "bv*+ba/b",
-        "--merge-output-format", "mp4",
-        url
+        "-f",
+        "bv*+ba/b",
+        "--merge-output-format",
+        "mp4",
+        url,
     ]
 
     subprocess.run(command)

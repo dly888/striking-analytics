@@ -1,13 +1,14 @@
-import cv2
 from pathlib import Path
+import cv2
 import numpy as np
-import numpy.typing as npt
 
-clip_path = (Path("assets") / "clips"
-             / "Joshua Van vs Brandon Royval ｜"
-               " FULL FIGHT ｜ UFC 328 [nwO2UPz7p28].webm")
+clip_path = (
+    Path("assets") / "clips" / "Joshua Van vs Brandon Royval ｜"
+    " FULL FIGHT ｜ UFC 328 [nwO2UPz7p28].webm"
+)
 
 cap = cv2.VideoCapture(clip_path)
+
 
 def get_clip_metadata(cap: cv2.VideoCapture) -> tuple[int | float]:
     fps = cap.get(cv2.CAP_PROP_FPS)
@@ -17,12 +18,12 @@ def get_clip_metadata(cap: cv2.VideoCapture) -> tuple[int | float]:
 
     return fps, width, height, frame_count
 
+
 def print_clip_meta_data(cap: cv2.VideoCapture) -> None:
     fps, width, height, frame_count = get_clip_metadata(cap)
 
-    print(f"fps={fps}\n"
-          f"widthxheight={width}x{height}\n"
-          f"frame_count={frame_count}")
+    print(f"fps={fps}\nwidthxheight={width}x{height}\nframe_count={frame_count}")
+
 
 def save_frame(cap: cv2.VideoCapture, frame_number: int, fight_title: str) -> None:
     _, _, _, frame_count = get_clip_metadata(cap)
@@ -43,17 +44,18 @@ def save_frame(cap: cv2.VideoCapture, frame_number: int, fight_title: str) -> No
     success = cv2.imwrite(str(file_path), frame)
 
     if not success:
-        raise IOError(f"Failed to write frame to {file_path}")
+        raise OSError(f"Failed to write frame to {file_path}")
+
 
 def get_frame_metadata(frame_path: str) -> tuple[tuple[int], np.dtype]:
     img = cv2.imread(frame_path)
 
     return img.shape, img.dtype
 
+
 def print_frame_metadata(frame_path: str) -> None:
     shape, dtype = get_frame_metadata(frame_path)
-    print(f"Shape={shape}\n"
-          f"dtype={dtype}")
+    print(f"Shape={shape}\ndtype={dtype}")
 
 
 def count_frames(clip_path: Path) -> int:
@@ -68,9 +70,11 @@ def count_frames(clip_path: Path) -> int:
 
     return count
 
+
 def print_actual_frame_count(clip_path: Path) -> None:
     count = count_frames(clip_path)
     print(f"Actual frame count={count}")
+
 
 print_clip_meta_data(cap=cap)
 print_frame_metadata("assets/frames/Van Vs Royval/frame_00400.jpg")
