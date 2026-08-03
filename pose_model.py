@@ -36,6 +36,51 @@ TEST_WRIST_TRACK = [
     (350, 411, 0.96)
 ]
 
+def get_fps(video_path: Path) -> float:
+    cap = cv2.VideoCapture(video_path)
+    fps = cap.get(cv2.CAP_PROP_FPS)
+    return fps
+
+
+
+def get_id_tracker(model: YOLO, video_path: Path) -> dict:
+    id_tracker = {}
+
+    results = model.track(
+        source=video_path,
+        persist=True,
+        stream=True,
+        tracker="bytetrack.yaml",
+        classes=[0]
+    )
+
+    for frame_idx, result in enumerate(results):
+        for detection_idx, (track_id, box, conf) in enumerate(
+                zip(
+                    result.boxes.id,
+                    result.boxes.xyxy,
+                    result.boxes.conf,
+                ),
+                start=1,
+        ):
+            track_id = int(track_id)
+
+            if track_id not in id_tracker:
+                id_tracker[track_id] = []
+
+            id_tracker[track_id].append([frame_idx, box.tolist(), round(float(conf), 2)])
+
+    return id_tracker
+
+def get_top_n_ids(id_tracker: dict, n=2):
+    top_n_ids = sorted(
+        id_tracker.items(),
+        key=lambda item: len(item[1]),
+        reverse=True
+    )[:n]
+
+    return top_n_ids
+
 
 def get_keypoints_on_single_frame(model: YOLO, frame_path: Path) -> Any:
     results = model(source=frame_path)
@@ -43,7 +88,9 @@ def get_keypoints_on_single_frame(model: YOLO, frame_path: Path) -> Any:
 
     return keypoints
 
-def get_frame_person_keypoints(model: YOLO, frame_path: Path, person_id: int) -> dict[str, tuple[float, float, float]]:
+
+def get_frame_person_keypoints(model: YOLO, frame_path: Path, person_id: int)\
+                              -> dict[str, tuple[float, float, float] | None]:
     results = model(source=str(frame_path))
     person_keypoints = results[0].keypoints[person_id]
 
@@ -80,8 +127,8 @@ def get_frame_person_keypoints(model: YOLO, frame_path: Path, person_id: int) ->
 def get_video_person_keypoints(model: YOLO,
                                video_path: Path,
                                person_id: int,
-                               conf_threshold=0.4)\
-                               -> dict[int, dict[str, tuple[float, float, float] | None]]:
+                               conf_threshold=0.5)\
+                               -> tuple[dict[Any, Any], int]:
     KEYPOINT_NAMES = {
         0: "nose",
         1: "left_eye",
@@ -103,22 +150,25 @@ def get_video_person_keypoints(model: YOLO,
     }
 
     keypoint_tracker = {}
+    frames_processed = 0
 
     results = model.track(
         source=video_path,
         persist=True,
         stream=True,
-        tracker="botsort.yaml",
+        tracker="bytetrack.yaml",
         classes=[0]
     )
 
     for frame_idx, result in enumerate(results):
         if result.boxes.id is None:
+            frames_processed += 1
             continue
 
         ids = result.boxes.id.int().tolist()
 
         if person_id not in ids:
+            frames_processed += 1
             continue
 
         i = ids.index(person_id)
@@ -130,45 +180,69 @@ def get_video_person_keypoints(model: YOLO,
         for k, name in KEYPOINT_NAMES.items():
             c = round(conf[k].item(), 2)
             current_keypoints[name] = (
-                None if c < conf_threshold
-                else (round(xy[k, 0].item(), 2), round(xy[k, 1].item(), 2), c)
+                (None, None, None)
+                if c < conf_threshold
+                else (
+                    round(xy[k, 0].item(), 2),
+                    round(xy[k, 1].item(), 2),
+                    c,
+                )
             )
-
+        frames_processed += 1
         keypoint_tracker[frame_idx] = current_keypoints
 
-    return keypoint_tracker
+    return keypoint_tracker, frames_processed
 
-def get_wrist_tracker(keypoint_tracker: dict[int, dict[str, tuple[float]]]) -> list[float]:
-    pass
+def get_wrist_tracker(keypoint_tracker: dict[int, dict[str, tuple[float, float, float] | None]],
+                      frames_processed,
+                      hand="left")\
+                     -> list[float | None]:
 
-def wrist_velocity(wrist_tracker, fps, conf_threshold=0.5, max_hold=6) -> list[float]:
+    wrist_tracker = [(None, None, None)] * frames_processed
+    hand = hand.lower()
+
+    if hand != "left" and hand != "right":
+        raise ValueError("Invalid input for hand.")
+
+    for frame_idx, keypoints in keypoint_tracker.items():
+        if hand == "left":
+            wrist_tracker[frame_idx] = keypoints["left_wrist"]
+        else:
+            wrist_tracker[frame_idx] = keypoints["right_wrist"]
+
+
+    return wrist_tracker
+
+def get_wrist_velocities(
+    wrist_tracker: list[tuple[float | None, float | None, float | None]],
+    fps: float,
+    conf_threshold=0.5,
+    max_hold=6
+) -> list[float]:
+
     velocities = []
-    anchor_pos = None        # last OBSERVED (x, y)
-    anchor_frame = None      # frame index it was observed at
+    prev_pos = None
     hold_count = 0
 
-    for i, (x, y, conf) in enumerate(wrist_tracker):
-        if conf >= conf_threshold:
-            if anchor_pos is None:
-                velocities.append(float("nan"))
-                anchor_pos = (x, y)
-                anchor_frame = i
-            else:
-                distance = math.dist(anchor_pos, (x, y))
-                elapsed_frames = i - anchor_frame
-                dt = elapsed_frames / fps
-                velocities.append(distance / dt)
+    dt = 1 / fps
 
+    for x, y, conf in wrist_tracker:
+        if conf is not None and conf >= conf_threshold:
+            if prev_pos is None:
+                velocities.append(float("nan"))
+            else:
+                distance = math.dist(prev_pos, (x, y))
+                velocities.append(distance / (dt * (hold_count + 1)))
+
+            prev_pos = (x, y)
             hold_count = 0
         else:
             hold_count += 1
+            velocities.append(float("nan"))
+
             if hold_count > max_hold:
-                velocities.append(float('nan'))
+                prev_pos = None
                 hold_count = 0
-                anchor_frame = None
-                anchor_pos = None
-            else:
-                velocities.append(float('nan'))
 
     return velocities
 
@@ -181,7 +255,76 @@ def annotate_single_frame(model: YOLO, frame_path: Path) -> None:
     cv2.waitKey(0)
     cv2.destroyAllWindows()
 
+def find_velocity_outliers(velocities: np.ndarray, threshold=3000) -> np.ndarray:
+    outliers = np.flatnonzero(velocities > threshold)
+    return outliers
 
+def longest_nan_run(arr: np.ndarray) -> int:
+    nan_mask = np.isnan(arr)
+
+    max_run = 0
+    current_run = 0
+
+    for is_nan in nan_mask:
+        if is_nan:
+            current_run += 1
+            max_run = max(max_run, current_run)
+        else:
+            current_run = 0
+
+    return max_run
+
+def get_maximum_velocity(velocities: np.ndarray) -> tuple[Any, Any]:
+    idx = np.nanargmax(velocities)
+    return idx, velocities[idx]
+
+def print_velocity_window(velocities: np.ndarray, frame: int, radius: int) -> None:
+    start = max(0, frame - radius)
+    end = min(len(velocities), frame + radius + 1)
+
+    print(f"\nFrames {start}–{end-1}")
+
+    for i in range(start, end):
+        marker = "<--" if i == frame else ""
+        print(
+            f"{i:5d}: "
+            f"{velocities[i]:8.1f} "
+            f"{marker}"
+        )
+
+def inspect_frame_pair(
+    keypoint_tracker: dict,
+    frame: int,
+):
+    print(f"\nFrame {frame-1}")
+
+    prev = keypoint_tracker[frame - 1]
+    curr = keypoint_tracker[frame]
+
+    for name in (
+        "right_wrist",
+        "right_shoulder",
+        "right_hip",
+    ):
+        print(
+            name,
+            "prev =", prev[name],
+            "curr =", curr[name],
+        )
+
+def get_stats(array: np.ndarray, start_frame: int | None = None, end_frame: int | None = None) -> dict[str, float]:
+    a = array[start_frame:end_frame]
+
+    return {
+        "start_frame": 0 if start_frame is None else start_frame,
+        "end_frame": len(array) if end_frame is None else end_frame,
+        "num_frames": len(a),
+        "nan_rate": np.isnan(a).mean(),
+        "median": np.nanmedian(a),
+        "90th": np.nanpercentile(a, 90),
+        "max": np.nanmax(a),
+        "longest_nan_run": longest_nan_run(a),
+    }
 # print(get_keypoints_on_single_frame(model=model, frame_path=frame_path))
 # print(get_person_keypoints(model=model, frame_path=frame_path, person_id=0))
 # annotate_single_frame(model=model, frame_path=frame_path)
@@ -189,9 +332,35 @@ def annotate_single_frame(model: YOLO, frame_path: Path) -> None:
 # for i, v in enumerate(wrist_velocity(TEST_WRIST_TRACK, fps=29.97)):
 #     print(i, v)
 
-# keypoint_tracker = get_video_person_keypoints(model=model,
-#                            video_path=video_path,
-#                            person_id=1)
-#
-# print(keypoint_tracker)
-# print(len(keypoint_tracker))
+id_tracker = get_id_tracker(model=model, video_path=video_path)
+top_2_ids = get_top_n_ids(id_tracker=id_tracker, n=2)
+
+keypoint_tracker, frames_processed = get_video_person_keypoints(model=model,
+                           video_path=video_path,
+                           person_id=top_2_ids[0][0])
+
+print(keypoint_tracker)
+print(len(keypoint_tracker))
+
+fps = get_fps(video_path=video_path)
+
+wrist_tracker = get_wrist_tracker(keypoint_tracker=keypoint_tracker, frames_processed=frames_processed, hand="right")
+wrist_velocities = np.array(get_wrist_velocities(wrist_tracker=wrist_tracker, fps=fps))
+print(wrist_velocities)
+print("Max velocity: ", np.nanmax(wrist_velocities))
+print("Min velocity: ", np.nanmin(wrist_velocities))
+print("Median velocity: ", np.nanmedian(wrist_velocities))
+print("Wrist_velocity length:", len(wrist_velocities))
+print("Wrist tracker length:", len(wrist_tracker))
+print("First person: ", get_stats(wrist_velocities, end_frame=340))
+print("Second person: ", get_stats(wrist_velocities, start_frame=341))
+print("Frames processed: ", frames_processed)
+
+outliers = find_velocity_outliers(velocities=wrist_velocities, threshold=3000)
+print("Outliers: ", outliers)
+
+frame_idx, max_velocity = get_maximum_velocity(velocities=wrist_velocities)
+print_velocity_window(velocities=wrist_velocities, frame=frame_idx, radius=10)
+
+inspect_frame_pair(keypoint_tracker=keypoint_tracker, frame=frame_idx)
+inspect_frame_pair(keypoint_tracker=keypoint_tracker, frame=frame_idx - 1)
