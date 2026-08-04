@@ -1,478 +1,369 @@
-import math
+from __future__ import annotations
+
+from collections import defaultdict
+from contextlib import contextmanager
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Iterator, Literal
 
 import cv2
 import numpy as np
-from numpy import dtype, ndarray
 from ultralytics import YOLO
 
-model = YOLO("yolo26n-pose.pt")
-frame_path = Path("assets") / "frames" / "Van Vs Royval" / "frame_00400.jpg"
-video_path = (
-    Path("assets")
-    / "clips"
-    / "Joshua Van vs Brandon Royval ｜ FULL FIGHT ｜ UFC 328 [nwO2UPz7p28].webm"
+Side = Literal["left", "right"]
+
+KEYPOINT_NAMES: tuple[str, ...] = (
+    "nose",
+    "left_eye",
+    "right_eye",
+    "left_ear",
+    "right_ear",
+    "left_shoulder",
+    "right_shoulder",
+    "left_elbow",
+    "right_elbow",
+    "left_wrist",
+    "right_wrist",
+    "left_hip",
+    "right_hip",
+    "left_knee",
+    "right_knee",
+    "left_ankle",
+    "right_ankle",
 )
-
-TEST_WRIST_TRACK = [
-    (100, 200, 0.95),
-    (105, 205, 0.90),
-    (110, 210, 0.70),
-    (115, 213, 0.80),
-    (120, 211, 0.84),
-    (125, 210, 0.84),
-    (125, 210, 0.84),
-    (125, 210, 0.84),
-    (130, 210, 0.2),
-    (130, 210, 0.2),
-    (130, 210, 0.2),
-    (130, 210, 0.2),
-    (130, 210, 0.2),
-    (130, 210, 0.2),
-    (130, 210, 0.2),
-    (130, 210, 0.2),
-    (145, 210, 0.90),
-    (345, 410, 0.90),
-    (345, 410, 0.10),
-    (345, 410, 0.10),
-    (350, 411, 0.96),
-]
+KEYPOINT_INDEX: dict[str, int] = {name: i for i, name in enumerate(KEYPOINT_NAMES)}
+N_KEYPOINTS = len(KEYPOINT_NAMES)
 
 
-def calculate_angles(
-    a: np.ndarray,
-    b: np.ndarray,
-    c: np.ndarray,
-) -> np.ndarray:
+@dataclass(frozen=True)
+class Config:
+    keypoint_conf: float = 0.4
+    extension_angle_threshold: float = 150.0
+    velocity_percentile: float = 90.0
+    max_hold: int = 6
+    min_punch_frames: int = 1
 
+
+# ========================================================================= #
+# GEOMETRY AND HELPERS
+# ========================================================================= #
+
+
+def calculate_angles(a: np.ndarray, b: np.ndarray, c: np.ndarray) -> np.ndarray:
     ba = a - b
     bc = c - b
 
     dot = np.sum(ba * bc, axis=1)
+    norms = np.linalg.norm(ba, axis=1) * np.linalg.norm(bc, axis=1)
 
-    magnitude_ba = np.linalg.norm(ba, axis=1)
-    magnitude_bc = np.linalg.norm(bc, axis=1)
-
+    # Ignore warnings
     with np.errstate(divide="ignore", invalid="ignore"):
-        cosine_angle = dot / (magnitude_ba * magnitude_bc)
+        cosine = np.clip(dot / norms, -1.0, 1.0)
 
-    cosine_angle = np.clip(cosine_angle, -1, 1)
-
-    return np.degrees(np.arccos(cosine_angle))
+    return np.degrees(np.arccos(cosine))
 
 
-def get_fps(video_path: Path) -> float:
-    cap = cv2.VideoCapture(video_path)
-    fps = cap.get(cv2.CAP_PROP_FPS)
-    return fps
+def segment_bounds(mask: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    edges = np.diff(np.pad(mask.astype(np.int8), 1))
+    return np.flatnonzero(edges == 1), np.flatnonzero(edges == -1)
 
 
-def get_top_n_ids(person_tracker: dict, n=2):
-    return sorted(
-        person_tracker.items(),
-        key=lambda item: len(item[1]["boxes"]),
-        reverse=True,
-    )[:n]
+def count_segments(mask: np.ndarray, min_length: int = 1) -> int:
+    starts, ends = segment_bounds(mask)
+    return int(np.count_nonzero(ends - starts >= min_length))
 
 
-def get_keypoints_on_single_frame(model: YOLO, frame_path: Path) -> Any:
-    results = model(source=frame_path)
-    keypoints = results[0].keypoints
-
-    return keypoints
+def longest_nan_run(mask: np.ndarray) -> int:
+    starts, ends = segment_bounds(mask)
+    return int((ends - starts).max()) if starts.size else 0
 
 
-def get_frame_person_keypoints(
-    model: YOLO, frame_path: Path, person_id: int
-) -> dict[str, tuple[float, float, float] | None]:
-    results = model(source=str(frame_path))
-    person_keypoints = results[0].keypoints[person_id]
+# ========================================================================= #
+# VIDEO
+# ========================================================================= #
 
-    KEYPOINT_NAMES = {
-        0: "nose",
-        1: "left_eye",
-        2: "right_eye",
-        3: "left_ear",
-        4: "right_ear",
-        5: "left_shoulder",
-        6: "right_shoulder",
-        7: "left_elbow",
-        8: "right_elbow",
-        9: "left_wrist",
-        10: "right_wrist",
-        11: "left_hip",
-        12: "right_hip",
-        13: "left_knee",
-        14: "right_knee",
-        15: "left_ankle",
-        16: "right_ankle",
-    }
-    keypoint_tracker = {}
 
-    for idx, ((x, y), conf) in enumerate(
-        zip(person_keypoints.xy[0], person_keypoints.conf[0])
-    ):
-        keypoint_tracker[KEYPOINT_NAMES[idx]] = (
-            round(x.item(), 2),
-            round(y.item(), 2),
-            round(conf.item(), 2),
+@contextmanager
+def open_video(path: Path) -> Iterator[cv2.VideoCapture]:
+    cap = cv2.VideoCapture(str(path))
+    if not cap.isOpened():
+        raise OSError(f"Could not open video: {path}")
+    try:
+        yield cap
+    finally:
+        cap.release()
+
+
+def get_fps(path: Path) -> float:
+    with open_video(path) as capture:
+        fps = capture.get(cv2.CAP_PROP_FPS)
+
+    if not fps > 0:
+        raise ValueError(f"Unusable frame rate ({fps}): {path}")
+
+    return float(fps)
+
+
+# ========================================================================= #
+# TRACKING
+# ========================================================================= #
+
+
+@dataclass(frozen=True)
+class PersonTrack:
+    track_id: int
+    keypoints: np.ndarray  # (frames_processed, N_KEYPOINTS, 3) of x, y, confidence
+    boxes: np.ndarray  # (frames_processed, 4) of xyxy
+    box_conf: np.ndarray  # (frames_processed,)
+    fps: float
+
+    @property
+    def frames_processed(self) -> int:
+        return len(self.keypoints)
+
+    @property
+    def detected(self) -> np.ndarray:
+        return ~np.isnan(self.boxes[:, 0])
+
+    def positions(self, name: str) -> np.ndarray:
+        return self.keypoints[:, KEYPOINT_INDEX[name], :2]
+
+    def confidence(self, name: str) -> np.ndarray:
+        return self.keypoints[:, KEYPOINT_INDEX[name], 2]
+
+
+class PoseTracker:
+    def __init__(self, weights: str = "yolo26n-pose.pt", config: Config = Config()):
+        self.model = YOLO(weights)
+        self.config = config
+
+    def get_person_tracker(self, video_path: Path) -> dict[int, PersonTrack]:
+        fps = get_fps(video_path)
+        detections: dict[int, dict[int, tuple]] = defaultdict(dict)
+        frames_processed = 0
+
+        results = self.model.track(
+            source=str(video_path),
+            persist=True,
+            tracker="bytetrack.yaml",
+            stream=True,
+            classes=[0],
         )
 
-    return keypoint_tracker
+        for frame_idx, result in enumerate(results):
+            frames_processed = frame_idx + 1
 
+            if result.boxes.id is None or result.keypoints.conf is None:
+                continue
 
-def get_wrist_velocities(
-    wrist_tracker: list[tuple[float | None, float | None, float | None]],
-    fps: float,
-    conf_threshold=0.5,
-    max_hold=6,
-) -> ndarray:
+            track_ids = result.boxes.id.int().tolist()
+            xy = result.keypoints.xy.cpu().numpy()
+            keypoint_conf = result.keypoints.conf.cpu().numpy()
+            boxes = result.boxes.xyxy.cpu().numpy()
+            box_conf = result.boxes.conf.cpu().numpy()
 
-    "Check if vectorisation is possible here"
-
-    velocities = []
-    prev_pos = None
-    hold_count = 0
-
-    dt = 1 / fps
-
-    for x, y, conf in wrist_tracker:
-        if conf is not None and conf >= conf_threshold:
-            if prev_pos is None:
-                velocities.append(float("nan"))
-            else:
-                distance = math.dist(prev_pos, (x, y))
-                velocities.append(distance / (dt * (hold_count + 1)))
-
-            prev_pos = (x, y)
-            hold_count = 0
-        else:
-            hold_count += 1
-            velocities.append(float("nan"))
-
-            if hold_count > max_hold:
-                prev_pos = None
-                hold_count = 0
-
-    return np.array(velocities)
-
-
-def get_punch_trackers(
-    keypoint_tracker: dict[int, dict[str, tuple[float, float, float] | None]],
-    frames_processed: int,
-    side="left",
-):
-
-    shoulder_tracker = [(None, None, None)] * frames_processed
-    wrist_tracker = [(None, None, None)] * frames_processed
-    elbow_tracker = [(None, None, None)] * frames_processed
-
-    side = side.lower()
-
-    if side != "left" and side != "right":
-        raise ValueError("Invalid input for side.")
-
-    for frame_idx, keypoints in keypoint_tracker.items():
-        if side == "left":
-            wrist_tracker[frame_idx] = keypoints["left_wrist"]
-            shoulder_tracker[frame_idx] = keypoints["left_shoulder"]
-            elbow_tracker[frame_idx] = keypoints["left_elbow"]
-        else:
-            wrist_tracker[frame_idx] = keypoints["right_wrist"]
-            shoulder_tracker[frame_idx] = keypoints["right_shoulder"]
-            elbow_tracker[frame_idx] = keypoints["right_elbow"]
-
-    return shoulder_tracker, elbow_tracker, wrist_tracker
-
-def get_person_tracker(model: YOLO, video_path: Path, conf_threshold=0.4):
-    KEYPOINT_NAMES = {
-        0: "nose",
-        1: "left_eye",
-        2: "right_eye",
-        3: "left_ear",
-        4: "right_ear",
-        5: "left_shoulder",
-        6: "right_shoulder",
-        7: "left_elbow",
-        8: "right_elbow",
-        9: "left_wrist",
-        10: "right_wrist",
-        11: "left_hip",
-        12: "right_hip",
-        13: "left_knee",
-        14: "right_knee",
-        15: "left_ankle",
-        16: "right_ankle",
-    }
-
-    person_tracker = {}
-    frames_processed = 0
-
-    results = model.track(
-        source=video_path,
-        persist=True,
-        tracker="bytetrack.yaml",
-        stream=True,
-        classes=[0]
-    )
-
-    for frame_idx, result in enumerate(results):
-        frames_processed += 1
-
-        if result.boxes.id is None:
-            continue
-
-        ids = result.boxes.id.int().tolist()
-
-        for det_idx, (track_id, box, conf) in enumerate(
-                zip(
-                    ids,
-                    result.boxes.xyxy,
-                    result.boxes.conf,
-                )
-        ):
-            if track_id not in person_tracker:
-                person_tracker[track_id] = {
-                    "boxes": [],
-                    "keypoints": {}
-                }
-
-            xy = result.keypoints.xy[det_idx]
-            keypoint_conf = result.keypoints.conf[det_idx]
-            current_keypoints = {}
-
-            for k, name in KEYPOINT_NAMES.items():
-                c = round(keypoint_conf[k].item(), 2)
-                current_keypoints[name] = (
-                    (None, None, None)
-                    if c < conf_threshold
-                    else (
-                        round(xy[k, 0].item(), 2),
-                        round(xy[k, 1].item(), 2),
-                        c,
-                    )
+            for det_idx, track_id in enumerate(track_ids):
+                detections[track_id][frame_idx] = (
+                    np.hstack([xy[det_idx], keypoint_conf[det_idx, :, None]]),
+                    boxes[det_idx],
+                    box_conf[det_idx],
                 )
 
-            person_tracker[track_id]["boxes"].append(
-                [frame_idx, box.tolist(), round(float(conf), 2)]
+        return {
+            track_id: self._densify(track_id, frames, frames_processed, fps)
+            for track_id, frames in detections.items()
+        }
 
-            )
-            person_tracker[track_id]["keypoints"][frame_idx] = current_keypoints
+    def _densify(
+            self,
+            track_id: int,
+            frames: dict[int, tuple],
+            frames_processed: int,
+            fps: float,
+    ) -> PersonTrack:
 
+        keypoints = np.full((frames_processed, N_KEYPOINTS, 3), np.nan, dtype=np.float32)
+        boxes = np.full((frames_processed, 4), np.nan, dtype=np.float32)
+        box_conf = np.full(frames_processed, np.nan, dtype=np.float32)
 
-    return person_tracker, frames_processed
+        for frame_idx, (frame_keypoints, box, conf) in frames.items():
+            keypoints[frame_idx] = frame_keypoints
+            boxes[frame_idx] = box
+            box_conf[frame_idx] = conf
 
+        keypoints[keypoints[:, :, 2] < self.config.keypoint_conf] = np.nan
 
-def get_velocity_percentiles(velocities: np.ndarray) -> dict[Any, Any]:
-    percentiles = [90, 95, 99]
+        return PersonTrack(track_id, keypoints, boxes, box_conf, fps)
 
-    values = np.nanpercentile(
-        velocities,
-        percentiles
-    )
-
-    return dict(zip(percentiles, values))
-
-def get_is_arm_extended(
-    wrist_tracker: list[tuple[float | None, float | None, float | None]],
-    shoulder_tracker: list[tuple[float | None, float | None, float | None]],
-    elbow_tracker: list[tuple[float | None, float | None, float | None]],
-    threshold=150,
-):
-
-    wrist = np.array(
-        [
-            (x, y) if x is not None and y is not None else (np.nan, np.nan)
-            for x, y, _ in wrist_tracker
-        ]
-    )
-
-    shoulder = np.array(
-        [
-            (x, y) if x is not None and y is not None else (np.nan, np.nan)
-            for x, y, _ in shoulder_tracker
-        ]
-    )
-
-    elbow = np.array(
-        [
-            (x, y) if x is not None and y is not None else (np.nan, np.nan)
-            for x, y, _ in elbow_tracker
-        ]
-    )
-
-    angles = calculate_angles(
-        shoulder,
-        elbow,
-        wrist,
-    )
-
-    return ((angles > threshold) & ~np.isnan(angles)).astype(int).tolist()
+    @staticmethod
+    def get_top_n_ids(person_tracker: dict[int, PersonTrack], n: int = 2) -> list[int]:
+        return sorted(
+            person_tracker,
+            key=lambda track_id: int(person_tracker[track_id].detected.sum()),
+            reverse=True,
+        )[:n]
 
 
-def get_punch_detector(wrist_velocities: np.ndarray, is_arm_extended: np.ndarray):
-    percentile_values = get_velocity_percentiles(wrist_velocities)
-    threshold = percentile_values[90]
-    punch_detector = is_arm_extended & (wrist_velocities > threshold)  # Use 90th percentile
-
-    return punch_detector
-
-def get_punch_count(punch_detector: np.ndarray) -> int:
-    padded = np.pad(punch_detector, (1, 1), constant_values=0)
-    starts = (padded[:-1] == 0) & (padded[1:] == 1)
-
-    return int(np.sum(starts))
-
-def annotate_single_frame(model: YOLO, frame_path: Path) -> None:
-    frame = cv2.imread(str(frame_path))
-    results = model(frame)
-    annotated = results[0].plot()
-
-    cv2.imshow("Annotated", annotated)
-    cv2.waitKey(0)
-    cv2.destroyAllWindows()
+# ========================================================================= #
+# ANALYSIS
+# ========================================================================= #
 
 
-def find_velocity_outliers(velocities: np.ndarray, threshold=3000) -> np.ndarray:
-    outliers = np.flatnonzero(velocities > threshold)
-    return outliers
+class PunchAnalyser:
+    def __init__(self, track: PersonTrack, config: Config = Config()):
+        self.track = track
+        self.config = config
+
+    def get_wrist_velocities(self, side: Side) -> np.ndarray:
+        xy = self.track.positions(f"{side}_wrist")
+        visible = ~np.isnan(xy[:, 0])
+        frames = np.arange(len(xy))
+
+        seen_at_or_before = np.maximum.accumulate(np.where(visible, frames, -1))
+        previous = np.roll(seen_at_or_before, 1)
+        previous[0] = -1
+
+        gap = frames - previous
+        measurable = visible & (previous >= 0) & (gap <= self.config.max_hold + 1)
+
+        speed = np.full(len(xy), np.nan)
+        distance = np.linalg.norm(xy[measurable] - xy[previous[measurable]], axis=1)
+        speed[measurable] = distance * self.track.fps / gap[measurable]
+
+        return speed
+
+    def get_is_arm_extended(self, side: Side) -> np.ndarray:
+        angles = calculate_angles(
+            self.track.positions(f"{side}_shoulder"),
+            self.track.positions(f"{side}_elbow"),
+            self.track.positions(f"{side}_wrist"),
+        )
+        return angles > self.config.extension_angle_threshold
+
+    def get_velocity_threshold(self, speed: np.ndarray) -> float:
+        if not np.any(~np.isnan(speed)):
+            return np.inf
+
+        return float(np.nanpercentile(speed, self.config.velocity_percentile))
+
+    def get_punch_detector(self, side: Side) -> np.ndarray:
+        speed = self.get_wrist_velocities(side)
+        threshold = self.get_velocity_threshold(speed)
+
+        return self.get_is_arm_extended(side) & (speed > threshold)
+
+    def get_punch_count(self, side: Side) -> int:
+        return count_segments(
+            self.get_punch_detector(side), self.config.min_punch_frames
+        )
 
 
-def longest_nan_run(arr: np.ndarray) -> int:
-    nan_mask = np.isnan(arr)
+class VelocityInspector:
+    def __init__(self, speed: np.ndarray, track: PersonTrack | None = None):
+        self.speed = speed
+        self.track = track
 
-    max_run = 0
-    current_run = 0
+    def get_stats(
+            self, start: int | None = None, end: int | None = None
+    ) -> dict[str, float]:
+        window = self.speed[start:end]
+        missing = np.isnan(window)
 
-    for is_nan in nan_mask:
-        if is_nan:
-            current_run += 1
-            max_run = max(max_run, current_run)
-        else:
-            current_run = 0
+        if missing.all():
+            return {
+                "start_frame": start or 0,
+                "end_frame": end if end is not None else len(self.speed),
+                "num_frames": len(window),
+                "nan_rate": 1.0,
+                "longest_nan_run": len(window),
+            }
 
-    return max_run
+        return {
+            "start_frame": start or 0,
+            "end_frame": end if end is not None else len(self.speed),
+            "num_frames": len(window),
+            "nan_rate": float(missing.mean()),
+            "median": float(np.nanmedian(window)),
+            "90th": float(np.nanpercentile(window, 90)),
+            "max": float(np.nanmax(window)),
+            "longest_nan_run": longest_nan_run(missing),
+        }
+
+    def find_velocity_outliers(self, threshold: float = 3000.0) -> np.ndarray:
+        return np.flatnonzero(self.speed > threshold)
+
+    def get_maximum_velocity(self) -> tuple[int, float]:
+        idx = int(np.nanargmax(self.speed))
+        return idx, float(self.speed[idx])
+
+    def velocity_window(self, frame: int, radius: int = 5) -> str:
+        start = max(0, frame - radius)
+        end = min(len(self.speed), frame + radius + 1)
+
+        lines = [f"Frames {start}-{end - 1}"]
+        for i in range(start, end):
+            marker = " <--" if i == frame else ""
+            lines.append(f"{i:5d}: {self.speed[i]:8.1f}{marker}")
+
+        return "\n".join(lines)
+
+    def inspect_frame_pair(self, frame: int, *names: str) -> str:
+        if self.track is None:
+            raise ValueError("No track found.")
+
+        lines = []
+        for name in names or ("right_shoulder", "right_elbow", "right_wrist"):
+            values = self.track.keypoints[
+                max(0, frame - 1) : frame + 1, KEYPOINT_INDEX[name]
+            ]
+            lines.append(f"{name:16s} {np.array2string(values, precision=1)}")
+
+        return "\n".join(lines)
 
 
-def get_maximum_velocity(velocities: np.ndarray) -> tuple[Any, Any]:
-    idx = np.nanargmax(velocities)
-    return idx, velocities[idx]
+# ========================================================================= #
+# ENTRY POINT
+# ========================================================================= #
 
 
-def print_velocity_window(velocities: np.ndarray, frame: int, radius: int) -> None:
-    start = max(0, frame - radius)
-    end = min(len(velocities), frame + radius + 1)
+def main(
+        video_path: Path,
+        side: Side = "left",
+        weights: str = "yolo26n-pose.pt",
+        fighters: int = 1,
+        config: Config = Config(),
+) -> None:
+    tracker = PoseTracker(weights=weights, config=config)
+    person_tracker = tracker.get_person_tracker(video_path)
 
-    print(f"\nFrames {start}–{end - 1}")
+    if not person_tracker:
+        print("No people were tracked.")
+        return
 
-    for i in range(start, end):
-        marker = "<--" if i == frame else ""
-        print(f"{i:5d}: {velocities[i]:8.1f} {marker}")
+    for track_id in tracker.get_top_n_ids(person_tracker, n=fighters):
+        track = person_tracker[track_id]
+        analyser = PunchAnalyser(track, config=config)
+        punch_detector = analyser.get_punch_detector(side)
 
-
-def inspect_frame_pair(
-    keypoint_tracker: dict,
-    frame: int,
-):
-    print(f"\nFrame {frame - 1}")
-
-    prev = keypoint_tracker[frame - 1]
-    curr = keypoint_tracker[frame]
-
-    for name in (
-        "right_wrist",
-        "right_shoulder",
-        "right_hip",
-    ):
+        starts, _ = segment_bounds(punch_detector)
         print(
-            name,
-            "prev =",
-            prev[name],
-            "curr =",
-            curr[name],
+            f"\nTrack {track_id}: seen in "
+            f"{int(track.detected.sum())}/{track.frames_processed} frames"
+        )
+        print(f"  {side} punches: {count_segments(punch_detector, config.min_punch_frames)}")
+        print(f"  at frames: {[int(s) for s in starts]}")
+        print(
+            f"  stats: "
+            f"{VelocityInspector(analyser.get_wrist_velocities(side)).get_stats()}"
         )
 
 
-def get_stats(
-    array: np.ndarray, start_frame: int | None = None, end_frame: int | None = None
-) -> dict[str, float]:
-    a = array[start_frame:end_frame]
+if __name__ == "__main__":
+    FRAME_PATH = Path("assets") / "frames" / "Van Vs Royval" / "frame_00400.jpg"
+    VIDEO_PATH = (
+            Path("assets")
+            / "clips"
+            / "Joshua Van vs Brandon Royval ｜ FULL FIGHT ｜ UFC 328 [nwO2UPz7p28].webm"
+    )
 
-    return {
-        "start_frame": 0 if start_frame is None else start_frame,
-        "end_frame": len(array) if end_frame is None else end_frame,
-        "num_frames": len(a),
-        "nan_rate": np.isnan(a).mean(),
-        "median": np.nanmedian(a),
-        "90th": np.nanpercentile(a, 90),
-        "max": np.nanmax(a),
-        "longest_nan_run": longest_nan_run(a),
-    }
-
-
-# print(get_keypoints_on_single_frame(model=model, frame_path=frame_path))
-# print(get_person_keypoints(model=model, frame_path=frame_path, person_id=0))
-# annotate_single_frame(model=model, frame_path=frame_path)
-
-# for i, v in enumerate(wrist_velocity(TEST_WRIST_TRACK, fps=29.97)):
-#     print(i, v)
-
-# id_tracker = get_id_tracker(model=model, video_path=video_path)
-#
-# keypoint_tracker, frames_processed = get_video_person_keypoints(
-#     model=model, video_path=video_path, person_id=top_2_ids[0][0]
-# )
-#
-# print(keypoint_tracker)
-# print(len(keypoint_tracker))
-#
-fps = get_fps(video_path=video_path)
-#
-# wrist_tracker = get_wrist_tracker(
-#     keypoint_tracker=keypoint_tracker, frames_processed=frames_processed, hand="right"
-# )
-# wrist_velocities = np.array(get_wrist_velocities(wrist_tracker=wrist_tracker, fps=fps))
-# print(wrist_velocities)
-# print("Max velocity: ", np.nanmax(wrist_velocities))
-# print("Min velocity: ", np.nanmin(wrist_velocities))
-# print("Median velocity: ", np.nanmedian(wrist_velocities))
-# print("Wrist_velocity length:", len(wrist_velocities))
-# print("Wrist tracker length:", len(wrist_tracker))
-# print("First person: ", get_stats(wrist_velocities, end_frame=340))
-# print("Second person: ", get_stats(wrist_velocities, start_frame=341))
-# print("Frames processed: ", frames_processed)
-#
-# outliers = find_velocity_outliers(velocities=wrist_velocities, threshold=3000)
-# print("Outliers: ", outliers)
-#
-# frame_idx, max_velocity = get_maximum_velocity(velocities=wrist_velocities)
-# print_velocity_window(velocities=wrist_velocities, frame=frame_idx, radius=10)
-#
-# inspect_frame_pair(keypoint_tracker=keypoint_tracker, frame=frame_idx)
-# inspect_frame_pair(keypoint_tracker=keypoint_tracker, frame=frame_idx - 1)
-
-tracker, frames_processed = get_person_tracker(model=model, video_path=video_path, conf_threshold=0.4)
-top_2_ids = get_top_n_ids(person_tracker=tracker)
-keypoint_tracker = tracker[top_2_ids[0][0]]["keypoints"]
-
-shoulder_tracker, elbow_tracker, wrist_tracker = get_punch_trackers(
-    keypoint_tracker=keypoint_tracker,
-    frames_processed=frames_processed,
-    side="left"
-)
-
-is_arm_extended = get_is_arm_extended(
-    shoulder_tracker=shoulder_tracker,
-    elbow_tracker=elbow_tracker,
-    wrist_tracker=wrist_tracker
-)
-
-wrist_velocities = get_wrist_velocities(wrist_tracker=wrist_tracker, fps=fps)
-
-punch_detector = get_punch_detector(wrist_velocities=wrist_velocities, is_arm_extended=is_arm_extended)
-punch_count = get_punch_count(punch_detector=punch_detector)
-
-print("ID tracked: ", top_2_ids[0][0])
-print("Punch detector: ", punch_detector)
-print("Punch count: ", punch_count)
+    main(video_path=VIDEO_PATH, side="left")
