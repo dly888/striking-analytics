@@ -132,6 +132,11 @@ class PersonTrack:
         return self.keypoints[:, KEYPOINT_INDEX[name], 2]
 
 
+# ========================================================================= #
+# TRACKERS
+# ========================================================================= #
+
+
 class PoseTracker:
     def __init__(self, model: str = "yolo26n-pose.pt", config: Config = Config()):
         self.model = YOLO(model)
@@ -210,33 +215,18 @@ class PoseTracker:
 
 class VideoAnnotater:
     def __init__(self, config: Config = Config()):
-        self.person_tracks: list[PersonTrack] = []
+        self.person_tracks: list[tuple[PersonTrack, Detections]] = []
         self.config = config
 
-    def add_tracker(self, tracker: PersonTrack):
-        self.person_tracks.append(tracker)
+    def add_tracker(self, tracker: PersonTrack, detections: Detections):
+        self.person_tracks.append((tracker, detections.expanded()))
 
-    def expand_punch_detections(
-            self,
-            punch_detector: np.ndarray,
-            before: int = 0,
-            after: int = 30,
-    ) -> np.ndarray:
-        "Create a window of punch detections around where a punch was actually detected so the punch"
-        "annotation can actually be seen for more than one frame"
+    def annotate_frame(self,
+                       person_track: PersonTrack,
+                       detections: Detections,
+                       frame,
+                       frame_idx: int):
 
-        expanded = punch_detector.copy()
-
-        punch_frames = np.flatnonzero(punch_detector)
-
-        for frame in punch_frames:
-            start = max(0, frame - before)
-            end = min(len(punch_detector), frame + after + 1)
-            expanded[start:end] = 1
-
-        return expanded
-
-    def annotate_frame(self, person_track: PersonTrack, frame, frame_idx: int, punch_detected: bool):
         box = person_track.boxes[frame_idx]
 
         if np.isnan(box).any():
@@ -256,11 +246,11 @@ class VideoAnnotater:
             2,
         )
 
-        if punch_detected:
+        for row, strike in enumerate(detections.active_at(frame_idx)):
             cv2.putText(
                 frame,
-                "PUNCH",
-                (x2, y1 - 20),
+                strike.label,
+                (x2, y1 - 20 + row * 35),
                 cv2.FONT_HERSHEY_SIMPLEX,
                 1,
                 (0, 0, 255),
@@ -271,13 +261,7 @@ class VideoAnnotater:
             self,
             video_path: Path,
             new_file_path: str,
-            side: Side = "left",
     ) -> None:
-
-        punch_detectors = {
-            track.track_id: self.expand_punch_detections(PunchAnalyser(track, self.config).get_punch_detector(side))
-            for track in self.person_tracks
-        }
 
         with open_video(video_path) as cap:
             width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
@@ -297,15 +281,15 @@ class VideoAnnotater:
                 if not success:
                     break
 
-                for track in self.person_tracks:
+                for track, detections in self.person_tracks:
                     if frame_idx >= track.frames_processed:
                         continue
 
                     self.annotate_frame(
                         person_track=track,
+                        detections=detections,
                         frame=frame,
                         frame_idx=frame_idx,
-                        punch_detected=punch_detectors[track.track_id][frame_idx],
                     )
 
                 writer.write(frame)
@@ -315,57 +299,134 @@ class VideoAnnotater:
 
 
 # ========================================================================= #
-# ANALYSIS
+# DETECTIONS
 # ========================================================================= #
 
+@dataclass(frozen=True)
+class Strike:
+    strike_type: str
+    side: Side
 
-class PunchAnalyser:
+    @property
+    def label(self) -> str:
+        return f"{self.side} {self.strike_type}".upper()
+
+
+@dataclass(frozen=True)
+class Detections:
+    strikes: tuple[Strike, ...]
+    mask: np.ndarray
+
+    @property
+    def n_frames(self) -> int:
+        return self.mask.shape[1]
+
+    def __getitem__(self, strike: Strike) -> np.ndarray:
+        return self.mask[self.strikes.index(strike)]
+
+    def active_at(self, frame_idx: int) -> list[Strike]:
+        return [
+            strike
+            for strike, row in zip(self.strikes, self.mask)
+            if row[frame_idx]
+        ]
+
+    def counts(self, min_frames: int = 1) -> dict[Strike, int]:
+        return {
+            strike: count_segments(row, min_frames)
+            for strike, row in zip(self.strikes, self.mask)
+        }
+
+    def start_frames(self, strike: Strike) -> np.ndarray:
+        starts, _ = segment_bounds(self[strike])
+        return starts
+
+    def expanded(self, before: int = 0, after: int = 30) -> "Detections":
+        """Create a window around each detection so the annotation remains
+        visible for multiple frames.
+        """
+        expanded = self.mask.copy()
+
+        for row_out, row in zip(expanded, self.mask):
+            for frame in np.flatnonzero(row):
+                start = max(0, frame - before)
+                end = min(self.n_frames, frame + after + 1)
+                row_out[start:end] = True
+
+        return Detections(self.strikes, expanded)
+
+# ========================================================================= #
+# FEATURES
+# ========================================================================= #
+
+def get_joint_speed(track: PersonTrack, name: str, config: Config) -> np.ndarray:
+    xy = track.positions(name)
+    visible = ~np.isnan(xy[:, 0])
+    frames = np.arange(len(xy))
+
+    seen_at_or_before = np.maximum.accumulate(np.where(visible, frames, -1))
+    previous = np.roll(seen_at_or_before, 1)
+    previous[0] = -1
+
+    gap = frames - previous
+    measurable = visible & (previous >= 0) & (gap <= config.max_hold + 1)
+
+    speed = np.full(len(xy), np.nan)
+    distance = np.linalg.norm(xy[measurable] - xy[previous[measurable]], axis=1)
+    speed[measurable] = distance * track.fps / gap[measurable]
+
+    return speed
+
+def get_joint_angle(track: PersonTrack, a: str, b: str, c: str) -> np.ndarray:
+    return calculate_angles(
+        track.positions(a),
+        track.positions(b),
+        track.positions(c),
+    )
+
+def get_relative_speed_threshold(speed: np.ndarray, config: Config) -> float:
+    if not np.any(~np.isnan(speed)):
+        return np.inf
+    return float(np.nanpercentile(speed, config.velocity_percentile))
+
+
+# ========================================================================= #
+# DETECTORS
+# ========================================================================= #
+
+def detect_straight(track: PersonTrack, side: Side, config: Config) -> np.ndarray:
+    speed = get_joint_speed(track, f"{side}_wrist", config)
+    threshold = get_relative_speed_threshold(speed, config)
+    extended = (
+        get_joint_angle(track, f"{side}_shoulder", f"{side}_elbow", f"{side}_wrist")
+        > config.extension_angle_threshold
+    )
+    return extended & (speed > threshold)
+
+DETECTORS = {
+    "straight" : detect_straight,
+    # Add other strikes later
+}
+
+
+class MoveAnalyser:
     def __init__(self, track: PersonTrack, config: Config = Config()):
         self.track = track
         self.config = config
 
-    def get_wrist_velocities(self, side: Side) -> np.ndarray:
-        xy = self.track.positions(f"{side}_wrist")
-        visible = ~np.isnan(xy[:, 0])
-        frames = np.arange(len(xy))
-
-        seen_at_or_before = np.maximum.accumulate(np.where(visible, frames, -1))
-        previous = np.roll(seen_at_or_before, 1)
-        previous[0] = -1
-
-        gap = frames - previous
-        measurable = visible & (previous >= 0) & (gap <= self.config.max_hold + 1)
-
-        speed = np.full(len(xy), np.nan)
-        distance = np.linalg.norm(xy[measurable] - xy[previous[measurable]], axis=1)
-        speed[measurable] = distance * self.track.fps / gap[measurable]
-
-        return speed
-
-    def get_is_arm_extended(self, side: Side) -> np.ndarray:
-        angles = calculate_angles(
-            self.track.positions(f"{side}_shoulder"),
-            self.track.positions(f"{side}_elbow"),
-            self.track.positions(f"{side}_wrist"),
+    def get_detections(self) -> Detections:
+        strikes = tuple(
+            Strike(technique, side)
+            for technique in DETECTORS
+            for side in ("left", "right")
         )
-        return angles > self.config.extension_angle_threshold
-
-    def get_velocity_threshold(self, speed: np.ndarray) -> float:
-        if not np.any(~np.isnan(speed)):
-            return np.inf
-
-        return float(np.nanpercentile(speed, self.config.velocity_percentile))
-
-    def get_punch_detector(self, side: Side) -> np.ndarray:
-        speed = self.get_wrist_velocities(side)
-        threshold = self.get_velocity_threshold(speed)
-
-        return self.get_is_arm_extended(side) & (speed > threshold)
-
-    def get_punch_count(self, side: Side) -> int:
-        return count_segments(
-            self.get_punch_detector(side), self.config.min_punch_frames
-        )
+        mask = np.stack(
+            [
+                DETECTORS[strike.strike_type](self.track, strike.side, self.config)
+                for strike in strikes
+            ]
+        ).astype(bool)
+        return Detections(strikes, mask)
 
 
 class VelocityInspector:
@@ -438,7 +499,6 @@ class VelocityInspector:
 
 def main(
         video_path: Path,
-        side: Side = "right",
         model: str = "yolo26n-pose.pt",
         fighters: int = 1,
         config: Config = Config(),
@@ -453,23 +513,26 @@ def main(
 
     for track_id in tracker.get_top_n_ids(person_tracker, n=fighters):
         track = person_tracker[track_id]
-        analyser = PunchAnalyser(track, config=config)
-        punch_detector = analyser.get_punch_detector(side)
-        video_annotater.add_tracker(track)
+        detections = MoveAnalyser(track, config=config).get_detections()
+        video_annotater.add_tracker(track, detections)
 
-        starts, _ = segment_bounds(punch_detector)
         print(
             f"\nTrack {track_id}: seen in "
             f"{int(track.detected.sum())}/{track.frames_processed} frames"
         )
-        print(f"  {side} punches: {count_segments(punch_detector, config.min_punch_frames)}")
-        print(f"  at frames: {[int(s) for s in starts]}")
-        print(
-            f"  stats: "
-            f"{VelocityInspector(analyser.get_wrist_velocities(side)).get_stats()}"
-        )
 
-    video_annotater.annotate_video(video_path=video_path, new_file_path="annotate_test_0003.mp4", side=side)
+        for strike, count in detections.counts(config.min_punch_frames).items():
+            starts = detections.start_frames(strike)
+            print(f"  {strike.label}: {count}")
+            print(f"  at frames: {[int(s) for s in starts]}")
+
+        for side in ("left", "right"):
+            print(
+                f"  {side} wrist stats: "
+                f"{VelocityInspector(get_joint_speed(track, f'{side}_wrist', config)).get_stats()}"
+            )
+
+    video_annotater.annotate_video(video_path=video_path, new_file_path="annotate_test_0003.mp4")
 
 
 if __name__ == "__main__":
@@ -480,4 +543,4 @@ if __name__ == "__main__":
             / "Joshua Van vs Brandon Royval ｜ FULL FIGHT ｜ UFC 328 [nwO2UPz7p28].webm"
     )
 
-    main(video_path=VIDEO_PATH, side="right")
+    main(video_path=VIDEO_PATH)
