@@ -133,8 +133,8 @@ class PersonTrack:
 
 
 class PoseTracker:
-    def __init__(self, weights: str = "yolo26n-pose.pt", config: Config = Config()):
-        self.model = YOLO(weights)
+    def __init__(self, model: str = "yolo26n-pose.pt", config: Config = Config()):
+        self.model = YOLO(model)
         self.config = config
 
     def get_person_tracker(self, video_path: Path) -> dict[int, PersonTrack]:
@@ -202,6 +202,116 @@ class PoseTracker:
             key=lambda track_id: int(person_tracker[track_id].detected.sum()),
             reverse=True,
         )[:n]
+
+# ========================================================================= #
+# ANNOTATERS
+# ========================================================================= #
+
+
+class VideoAnnotater:
+    def __init__(self, config: Config = Config()):
+        self.person_tracks: list[PersonTrack] = []
+        self.config = config
+
+    def add_tracker(self, tracker: PersonTrack):
+        self.person_tracks.append(tracker)
+
+    def expand_punch_detections(
+            self,
+            punch_detector: np.ndarray,
+            before: int = 0,
+            after: int = 30,
+    ) -> np.ndarray:
+        "Create a window of punch detections around where a punch was actually detected so the punch"
+        "annotation can actually be seen for more than one frame"
+
+        expanded = punch_detector.copy()
+
+        punch_frames = np.flatnonzero(punch_detector)
+
+        for frame in punch_frames:
+            start = max(0, frame - before)
+            end = min(len(punch_detector), frame + after + 1)
+            expanded[start:end] = 1
+
+        return expanded
+
+    def annotate_frame(self, person_track: PersonTrack, frame, frame_idx: int, punch_detected: bool):
+        box = person_track.boxes[frame_idx]
+
+        if np.isnan(box).any():
+            return
+
+        x1, y1, x2, y2 = map(int, box)
+
+        cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
+
+        cv2.putText(
+            frame,
+            f"ID {person_track.track_id}",
+            (x1, y1 - 10),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            1,
+            (0, 255, 0),
+            2,
+        )
+
+        if punch_detected:
+            cv2.putText(
+                frame,
+                "PUNCH",
+                (x2, y1 - 20),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                1,
+                (0, 0, 255),
+                2,
+            )
+
+    def annotate_video(
+            self,
+            video_path: Path,
+            new_file_path: str,
+            side: Side = "left",
+    ) -> None:
+
+        punch_detectors = {
+            track.track_id: self.expand_punch_detections(PunchAnalyser(track, self.config).get_punch_detector(side))
+            for track in self.person_tracks
+        }
+
+        with open_video(video_path) as cap:
+            width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+            height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+
+            writer = cv2.VideoWriter(
+                str(new_file_path),
+                cv2.VideoWriter_fourcc(*"mp4v"),
+                get_fps(video_path),
+                (width, height),
+            )
+
+            frame_idx = 0
+
+            while True:
+                success, frame = cap.read()
+                if not success:
+                    break
+
+                for track in self.person_tracks:
+                    if frame_idx >= track.frames_processed:
+                        continue
+
+                    self.annotate_frame(
+                        person_track=track,
+                        frame=frame,
+                        frame_idx=frame_idx,
+                        punch_detected=punch_detectors[track.track_id][frame_idx],
+                    )
+
+                writer.write(frame)
+                frame_idx += 1
+
+            writer.release()
 
 
 # ========================================================================= #
@@ -328,13 +438,14 @@ class VelocityInspector:
 
 def main(
         video_path: Path,
-        side: Side = "left",
-        weights: str = "yolo26n-pose.pt",
+        side: Side = "right",
+        model: str = "yolo26n-pose.pt",
         fighters: int = 1,
         config: Config = Config(),
 ) -> None:
-    tracker = PoseTracker(weights=weights, config=config)
+    tracker = PoseTracker(model=model, config=config)
     person_tracker = tracker.get_person_tracker(video_path)
+    video_annotater = VideoAnnotater(config=config)
 
     if not person_tracker:
         print("No people were tracked.")
@@ -344,6 +455,7 @@ def main(
         track = person_tracker[track_id]
         analyser = PunchAnalyser(track, config=config)
         punch_detector = analyser.get_punch_detector(side)
+        video_annotater.add_tracker(track)
 
         starts, _ = segment_bounds(punch_detector)
         print(
@@ -357,6 +469,8 @@ def main(
             f"{VelocityInspector(analyser.get_wrist_velocities(side)).get_stats()}"
         )
 
+    video_annotater.annotate_video(video_path=video_path, new_file_path="annotate_test_0003.mp4", side=side)
+
 
 if __name__ == "__main__":
     FRAME_PATH = Path("assets") / "frames" / "Van Vs Royval" / "frame_00400.jpg"
@@ -366,4 +480,4 @@ if __name__ == "__main__":
             / "Joshua Van vs Brandon Royval ｜ FULL FIGHT ｜ UFC 328 [nwO2UPz7p28].webm"
     )
 
-    main(video_path=VIDEO_PATH, side="left")
+    main(video_path=VIDEO_PATH, side="right")
