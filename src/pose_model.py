@@ -40,7 +40,7 @@ N_KEYPOINTS = len(KEYPOINT_NAMES)
 class Config:
     keypoint_conf: float = 0.4
     extension_angle_threshold: float = 150.0
-    velocity_percentile: float = 90.0
+    velocity_percentile: float = 95.0
     max_hold: int = 6
     min_punch_frames: int = 1
 
@@ -269,7 +269,7 @@ class VideoAnnotater:
         #     )
 
         for row, strike in enumerate(detections.active_at(frame_idx)):
-            if strike.strike_type == "straight" and strike.side == "left":
+            if strike.strike_type == "straight" and strike.side == "right":
                 cv2.putText(
                     frame,
                     strike.label,
@@ -443,8 +443,8 @@ def get_punch_speed_threshold(track: PersonTrack):
 # ========================================================================= #
 
 def detect_straight(track: PersonTrack, side: Side, config: Config) -> np.ndarray:
-    thresholds = get_punch_speed_threshold(track)
     speed = get_joint_speed(track, f"{side}_wrist", config)
+    thresholds = get_relative_speed_threshold(speed, config)
     extended = (
         get_joint_angle(track, f"{side}_shoulder", f"{side}_elbow", f"{side}_wrist")
         > config.extension_angle_threshold
@@ -582,13 +582,13 @@ def main(
                 f"{VelocityInspector(get_joint_speed(track, f'{side}_wrist', config)).get_stats()}"
             )
 
-    video_annotater.annotate_video(video_path=video_path, new_file_path="annotate_test_0003.mp4")
+    video_annotater.annotate_video(video_path=video_path, new_file_path="../outputs/annotate_test_0003.mp4")
 
 
 if __name__ == "__main__":
-    FRAME_PATH = Path("assets") / "frames" / "Van Vs Royval" / "frame_00400.jpg"
+    FRAME_PATH = Path("../assets") / "frames" / "Van Vs Royval" / "frame_00400.jpg"
     VIDEO_PATH = (
-            Path("assets")
+            Path("../assets")
             / "clips"
             / "Joshua Van vs Brandon Royval ｜ FULL FIGHT ｜ UFC 328 [nwO2UPz7p28].webm"
     )

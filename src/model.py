@@ -4,7 +4,7 @@ from typing import Any
 import cv2
 from ultralytics import YOLO
 
-model = YOLO("yolo26n.pt")
+model = YOLO("../yolo26n.pt")
 frame_path = Path("assest") / "frames" / "Van Vs Royval/frame_00400.jpg"
 
 
@@ -140,9 +140,9 @@ def annotate_video(video_path: Path, file_name: str, model: YOLO) -> None:
 
 
 clip_path = (
-    Path("assets")
+    Path("../assets")
     / "clips"
     / "Joshua Van vs Brandon Royval ｜ FULL FIGHT ｜ UFC 328 [nwO2UPz7p28].webm"
 )
 
-annotate_video(video_path=clip_path, file_name="test_0001.mp4", model=model)
+annotate_video(video_path=clip_path, file_name="../outputs/test_0001.mp4", model=model)

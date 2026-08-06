@@ -3,7 +3,7 @@ import cv2
 import numpy as np
 
 clip_path = (
-    Path("assets") / "clips" / "Joshua Van vs Brandon Royval ｜"
+        Path("../assets") / "clips" / "Joshua Van vs Brandon Royval ｜"
     " FULL FIGHT ｜ UFC 328 [nwO2UPz7p28].webm"
 )
 
@@ -37,7 +37,7 @@ def save_frame(cap: cv2.VideoCapture, frame_number: int, fight_title: str) -> No
     if not ret:
         raise ValueError(f"Could not read frame {frame_number}.")
 
-    base_path = Path("assets") / "frames" / fight_title
+    base_path = Path("../assets") / "frames" / fight_title
     base_path.mkdir(parents=True, exist_ok=True)
     file_path = base_path / f"frame_{frame_number:05d}.jpg"
 
@@ -77,6 +77,6 @@ def print_actual_frame_count(clip_path: Path) -> None:
 
 
 print_clip_meta_data(cap=cap)
-print_frame_metadata("assets/frames/Van Vs Royval/frame_00400.jpg")
+print_frame_metadata("../assets/frames/Van Vs Royval/frame_00400.jpg")
 print_actual_frame_count(clip_path=clip_path)
 # save_frame(cap=cap, frame_number=400, fight_title="Van Vs Royval")
