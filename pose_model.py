@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from collections import defaultdict
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -108,6 +109,14 @@ def get_fps(path: Path) -> float:
 # TRACKING
 # ========================================================================= #
 
+@dataclass(frozen=True)
+class Person:
+    name: str
+    weight: float
+    height_m : float
+    wingspan_m: float
+    stance: Side
+
 
 @dataclass(frozen=True)
 class PersonTrack:
@@ -116,6 +125,7 @@ class PersonTrack:
     boxes: np.ndarray  # (frames_processed, 4) of xyxy
     box_conf: np.ndarray  # (frames_processed,)
     fps: float
+    person: Person
 
     @property
     def frames_processed(self) -> int:
@@ -138,9 +148,10 @@ class PersonTrack:
 
 
 class PoseTracker:
-    def __init__(self, model: str = "yolo26n-pose.pt", config: Config = Config()):
+    def __init__(self, person: Person, model: str = "yolo26n-pose.pt", config: Config = Config()):
         self.model = YOLO(model)
         self.config = config
+        self.person = person
 
     def get_person_tracker(self, video_path: Path) -> dict[int, PersonTrack]:
         fps = get_fps(video_path)
@@ -198,7 +209,7 @@ class PoseTracker:
 
         keypoints[keypoints[:, :, 2] < self.config.keypoint_conf] = np.nan
 
-        return PersonTrack(track_id, keypoints, boxes, box_conf, fps)
+        return PersonTrack(track_id, keypoints, boxes, box_conf, fps, self.person)
 
     @staticmethod
     def get_top_n_ids(person_tracker: dict[int, PersonTrack], n: int = 2) -> list[int]:
@@ -246,16 +257,29 @@ class VideoAnnotater:
             2,
         )
 
+        # for row, strike in enumerate(detections.active_at(frame_idx)):
+        #     cv2.putText(
+        #         frame,
+        #         strike.label,
+        #         (x2, y1 - 20 + row * 35),
+        #         cv2.FONT_HERSHEY_SIMPLEX,
+        #         1,
+        #         (0, 0, 255),
+        #         2,
+        #     )
+
         for row, strike in enumerate(detections.active_at(frame_idx)):
-            cv2.putText(
-                frame,
-                strike.label,
-                (x2, y1 - 20 + row * 35),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                1,
-                (0, 0, 255),
-                2,
-            )
+            if strike.strike_type == "straight" and strike.side == "left":
+                cv2.putText(
+                    frame,
+                    strike.label,
+                    (x2, y1 - 20 + row * 35),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    1,
+                    (0, 0, 255),
+                    2,
+                )
+
 
     def annotate_video(
             self,
@@ -389,19 +413,43 @@ def get_relative_speed_threshold(speed: np.ndarray, config: Config) -> float:
         return np.inf
     return float(np.nanpercentile(speed, config.velocity_percentile))
 
+def get_pixel_to_meter_ratio(
+    track: PersonTrack,
+) -> np.ndarray:
+
+    left_shoulder = track.positions("left_shoulder")
+    right_shoulder = track.positions("right_shoulder")
+
+    shoulder_pixels = np.linalg.norm(
+        right_shoulder - left_shoulder,
+        axis=1,
+    )
+
+    wingspan_m = track.person.wingspan_m
+    shoulder_width_m = wingspan_m * 0.25
+    ratio = shoulder_width_m / shoulder_pixels
+
+    return ratio
+
+
+def get_punch_speed_threshold(track: PersonTrack):
+    pixel_to_m_ratio = get_pixel_to_meter_ratio(track)
+    thresholds = 5 / pixel_to_m_ratio
+    return thresholds
+
 
 # ========================================================================= #
 # DETECTORS
 # ========================================================================= #
 
 def detect_straight(track: PersonTrack, side: Side, config: Config) -> np.ndarray:
+    thresholds = get_punch_speed_threshold(track)
     speed = get_joint_speed(track, f"{side}_wrist", config)
-    threshold = get_relative_speed_threshold(speed, config)
     extended = (
         get_joint_angle(track, f"{side}_shoulder", f"{side}_elbow", f"{side}_wrist")
         > config.extension_angle_threshold
     )
-    return extended & (speed > threshold)
+    return extended & (speed > thresholds)
 
 DETECTORS = {
     "straight" : detect_straight,
@@ -413,6 +461,7 @@ class MoveAnalyser:
     def __init__(self, track: PersonTrack, config: Config = Config()):
         self.track = track
         self.config = config
+        self.thresholds = get_punch_speed_threshold(track)
 
     def get_detections(self) -> Detections:
         strikes = tuple(
@@ -499,11 +548,12 @@ class VelocityInspector:
 
 def main(
         video_path: Path,
+        person: Person,
         model: str = "yolo26n-pose.pt",
         fighters: int = 1,
         config: Config = Config(),
 ) -> None:
-    tracker = PoseTracker(model=model, config=config)
+    tracker = PoseTracker(model=model, config=config, person=person)
     person_tracker = tracker.get_person_tracker(video_path)
     video_annotater = VideoAnnotater(config=config)
 
@@ -543,4 +593,12 @@ if __name__ == "__main__":
             / "Joshua Van vs Brandon Royval ｜ FULL FIGHT ｜ UFC 328 [nwO2UPz7p28].webm"
     )
 
-    main(video_path=VIDEO_PATH)
+    royval = Person(
+        name="Brandon Royval",
+        height_m=1.75,
+        weight=57,
+        wingspan_m=1.73,
+        stance="left"
+    )
+
+    main(video_path=VIDEO_PATH, person=royval)
