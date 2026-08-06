@@ -38,8 +38,11 @@ N_KEYPOINTS = len(KEYPOINT_NAMES)
 
 @dataclass(frozen=True)
 class Config:
+    """Configuration parameters controlling detection thresholds and tracking behaviour."""
+
     keypoint_conf: float = 0.4
-    extension_angle_threshold: float = 150.0
+    arm_extension_angle_threshold: float = 150.0
+    arm_body_angle_threshold: float= 35.0
     velocity_percentile: float = 95.0
     max_hold: int = 6
     min_punch_frames: int = 1
@@ -51,6 +54,17 @@ class Config:
 
 
 def calculate_angles(a: np.ndarray, b: np.ndarray, c: np.ndarray) -> np.ndarray:
+    """Calculates the angle between three vectors in fixed order, usually the keypoint positions.
+
+    Args:
+        a: Keypoint 1
+        b: Keypoint 2, the middle point
+        c: Keypoint 3
+
+    Returns:
+        Angle of abc in degrees.
+    """
+
     ba = a - b
     bc = c - b
 
@@ -65,16 +79,49 @@ def calculate_angles(a: np.ndarray, b: np.ndarray, c: np.ndarray) -> np.ndarray:
 
 
 def segment_bounds(mask: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """
+    Finds start and end indices of True segments in boolean mask.
+
+    Mask padded with False values ends so changes between True and
+    False segments are detected.
+
+    Args:
+        mask: Boolean array
+
+    Returns:
+        Tuple containing two arrays: start and end indices,  for each segment.
+        .
+    """
     edges = np.diff(np.pad(mask.astype(np.int8), 1))
     return np.flatnonzero(edges == 1), np.flatnonzero(edges == -1)
 
 
 def count_segments(mask: np.ndarray, min_length: int = 1) -> int:
+    """
+    Counts the number of segments of 1.
+
+    Args:
+        mask: Bitmask array
+        min_length: Minimum length of a segment to be counted.
+
+    Returns:
+        The count of the number of segments in input mask.
+    """
+
     starts, ends = segment_bounds(mask)
     return int(np.count_nonzero(ends - starts >= min_length))
 
 
 def longest_nan_run(mask: np.ndarray) -> int:
+    """Finds the longest sequence of consecutive nans in mask.
+
+    Args:
+        mask: Bitmask array.
+
+    Returns:
+        Longest sequence of consecutive nans in mask.
+    """
+
     starts, ends = segment_bounds(mask)
     return int((ends - starts).max()) if starts.size else 0
 
@@ -86,6 +133,12 @@ def longest_nan_run(mask: np.ndarray) -> int:
 
 @contextmanager
 def open_video(path: Path) -> Iterator[cv2.VideoCapture]:
+    """Context manager to open video file.
+
+    Args:
+        path: Path of the video to be opened.
+    """
+
     cap = cv2.VideoCapture(str(path))
     if not cap.isOpened():
         raise OSError(f"Could not open video: {path}")
@@ -96,6 +149,16 @@ def open_video(path: Path) -> Iterator[cv2.VideoCapture]:
 
 
 def get_fps(path: Path) -> float:
+    """
+    Gets fps of the video file.
+
+    Args:
+        path: Path of the video file.
+
+    Returns:
+        Fps of the video file.
+    """
+
     with open_video(path) as capture:
         fps = capture.get(cv2.CAP_PROP_FPS)
 
@@ -111,6 +174,9 @@ def get_fps(path: Path) -> float:
 
 @dataclass(frozen=True)
 class Person:
+    """
+    Stores data of the person.
+    """
     name: str
     weight: float
     height_m : float
@@ -120,6 +186,10 @@ class Person:
 
 @dataclass(frozen=True)
 class PersonTrack:
+    """
+    Stores data on the tracking of the person.
+    """
+
     track_id: int
     keypoints: np.ndarray  # (frames_processed, N_KEYPOINTS, 3) of x, y, confidence
     boxes: np.ndarray  # (frames_processed, 4) of xyxy
@@ -148,12 +218,26 @@ class PersonTrack:
 
 
 class PoseTracker:
+    """
+    Tracks a person's pose keypoints and bounding boxes using YOLO pose model.
+    """
+
     def __init__(self, person: Person, model: str = "yolo26n-pose.pt", config: Config = Config()):
         self.model = YOLO(model)
         self.config = config
         self.person = person
 
     def get_person_tracker(self, video_path: Path) -> dict[int, PersonTrack]:
+        """
+        Runs model on video and gets data of the person in the video.
+
+        Args:
+            video_path: Path of the video file.
+
+        Returns:
+            Dictionary containing the id and PersonTrack object.
+        """
+
         fps = get_fps(video_path)
         detections: dict[int, dict[int, tuple]] = defaultdict(dict)
         frames_processed = 0
@@ -191,12 +275,25 @@ class PoseTracker:
         }
 
     def _densify(
+
             self,
             track_id: int,
             frames: dict[int, tuple],
             frames_processed: int,
             fps: float,
     ) -> PersonTrack:
+        """
+        Converts data tracked from model into PersonTrack object.
+
+        Args:
+            track_id: ID that the model uses to track the person.
+            frames: Dictionary containing the frame index and the actual OpenCV frame read.
+            frames_proccessed: Number of frames processed by the model.
+            fps: FPS of the video.
+
+        Returns:
+            PersonTrack object.
+        """
 
         keypoints = np.full((frames_processed, N_KEYPOINTS, 3), np.nan, dtype=np.float32)
         boxes = np.full((frames_processed, 4), np.nan, dtype=np.float32)
@@ -213,6 +310,16 @@ class PoseTracker:
 
     @staticmethod
     def get_top_n_ids(person_tracker: dict[int, PersonTrack], n: int = 2) -> list[int]:
+        """
+        Gets the ids of persons with the top n longest appearances in the video by the model.
+
+        Args:
+            person_tracker: Dictionary containing model id and PersonTrack.
+            n: The number of persons to be returned.
+
+        Returns:
+            List of the top n most appeared persons.
+        """
         return sorted(
             person_tracker,
             key=lambda track_id: int(person_tracker[track_id].detected.sum()),
@@ -225,11 +332,23 @@ class PoseTracker:
 
 
 class VideoAnnotater:
+    """
+    Annotates a video using data tracked by the model.
+    """
+
     def __init__(self, config: Config = Config()):
         self.person_tracks: list[tuple[PersonTrack, Detections]] = []
         self.config = config
 
     def add_tracker(self, tracker: PersonTrack, detections: Detections):
+        """
+        Adds a PersonTrack object for VideoAnnotater to include in the video annotations.
+
+        Args:
+            tracker: PersonTrack object
+            detections: Detections object
+        """
+
         self.person_tracks.append((tracker, detections.expanded()))
 
     def annotate_frame(self,
@@ -237,6 +356,16 @@ class VideoAnnotater:
                        detections: Detections,
                        frame,
                        frame_idx: int):
+
+        """
+        Annotates a single frame.
+
+        Args:
+            person_track: PersonTrack object
+            detections: Detections object
+            frame: OpenCV frame to be annotated on
+            frame_idx: The index in which the frame appears in the video
+        """
 
         box = person_track.boxes[frame_idx]
 
@@ -286,6 +415,14 @@ class VideoAnnotater:
             video_path: Path,
             new_file_path: str,
     ) -> None:
+        """
+        Annotates the entire video with: a box around persons tracked, ID label,
+         and strike label when a strike occurs.
+
+        Args:
+            video_path: Path of the video file.
+            new_path_file: The path of the new annotated video file.
+        """
 
         with open_video(video_path) as cap:
             width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
@@ -328,6 +465,9 @@ class VideoAnnotater:
 
 @dataclass(frozen=True)
 class Strike:
+    """
+    Stores data for each type of strike i.e left straight, right hook, left roundhouse
+    """
     strike_type: str
     side: Side
 
@@ -338,6 +478,12 @@ class Strike:
 
 @dataclass(frozen=True)
 class Detections:
+    """
+    Used to track when a strike occurs.
+
+    Uses a boolean mask to identify when a strike occurs, where each index is a frame in teh video.
+    Contains a boolean mask for each strike object.
+    """
     strikes: tuple[Strike, ...]
     mask: np.ndarray
 
@@ -346,28 +492,67 @@ class Detections:
         return self.mask.shape[1]
 
     def __getitem__(self, strike: Strike) -> np.ndarray:
+        """
+        Get the corresponding boolean mask of strike object using the strike object in the index.
+        """
         return self.mask[self.strikes.index(strike)]
 
     def active_at(self, frame_idx: int) -> list[Strike]:
+        """
+        Checks which strikes occur at a given frame.
+
+        Args:
+            frame_idx: Index of frame currently being checked
+
+        Returns:
+            List of strikes active at the given frame.
+        """
+
         return [
             strike
-            for strike, row in zip(self.strikes, self.mask)
-            if row[frame_idx]
+            for strike, mask_row in zip(self.strikes, self.mask)
+            if mask_row[frame_idx]
         ]
 
     def counts(self, min_frames: int = 1) -> dict[Strike, int]:
+        """
+        Counts the strike occurance for each strike type.
+
+        Args:
+            min_frames: Minumum number of frames a strike needs to be detected for to be counted for.
+
+        Returns:
+            Dictionary containing each strike and its count.
+        """
+
         return {
             strike: count_segments(row, min_frames)
             for strike, row in zip(self.strikes, self.mask)
         }
 
     def start_frames(self, strike: Strike) -> np.ndarray:
+        """
+        Gets the first frame index for when each strike occurs.
+
+        Args:
+            strike: Strike object
+
+        Returns:
+            List of indexes where a strike detection occurs in the mask.
+        """
         starts, _ = segment_bounds(self[strike])
         return starts
 
     def expanded(self, before: int = 0, after: int = 30) -> "Detections":
         """Create a window around each detection so the annotation remains
         visible for multiple frames.
+
+        Args:
+            before: The length of the window before the frame.
+            after: The length of the window after the frame.
+
+        Returns:
+            Detection object which uses the new expanded boolean mask instead of the old boolean mask.
         """
         expanded = self.mask.copy()
 
@@ -384,6 +569,23 @@ class Detections:
 # ========================================================================= #
 
 def get_joint_speed(track: PersonTrack, name: str, config: Config) -> np.ndarray:
+    """Calculate the speed of a joint in pixels per second.
+
+    Missing keypoint detections handled by using the most recent valid
+    position, as long as the number of skipped frames stays under the
+    maximum hold distance. Frames where speed  can't be calculated
+    accurately return NaN.
+
+    Args:
+        track: PersonTrack object
+        name: Name of the joint/keypoint
+        config: Config object
+
+    Returns:
+        Numpy array containing the joint speed for each frame.
+        Frames where the speed can't be calculated have NaN values.
+    """
+
     xy = track.positions(name)
     visible = ~np.isnan(xy[:, 0])
     frames = np.arange(len(xy))
@@ -402,6 +604,18 @@ def get_joint_speed(track: PersonTrack, name: str, config: Config) -> np.ndarray
     return speed
 
 def get_joint_angle(track: PersonTrack, a: str, b: str, c: str) -> np.ndarray:
+    """
+    Gets the angle between three joints.
+
+    Args:
+        track: PersonTrack object.
+        a: Position vector of the first keypoint/joint
+        b: Position vector of the second keypoint/joint, the joint where the angle is actually at.
+        c: Position vector of the third keypoint/joint
+
+    Returns:
+        Angle ABC in degrees.
+    """
     return calculate_angles(
         track.positions(a),
         track.positions(b),
@@ -409,6 +623,17 @@ def get_joint_angle(track: PersonTrack, a: str, b: str, c: str) -> np.ndarray:
     )
 
 def get_relative_speed_threshold(speed: np.ndarray, config: Config) -> float:
+    """
+    Calculates the speed threshold using a top n percentile based on the entire video, set at config.
+
+    Args:
+        speed: Numpy array containing speeds for each frame.
+        config: Config object
+
+    Returns:
+        The calculated speed threshold. Returns infinity if no valid speed
+        values are available.
+    """
     if not np.any(~np.isnan(speed)):
         return np.inf
     return float(np.nanpercentile(speed, config.velocity_percentile))
@@ -416,7 +641,18 @@ def get_relative_speed_threshold(speed: np.ndarray, config: Config) -> float:
 def get_pixel_to_meter_ratio(
     track: PersonTrack,
 ) -> np.ndarray:
+    """
+    Calculates pixel-to-meter conversion ratio for each frame.
 
+    Conversion estimated using the user's wingspan to approximate shoulder
+    width in real-world units.
+
+    Args:
+        track: PersonTrack object
+
+    Returns:
+        Numpy array containing the pixel to meter ratio for each frame.
+    """
     left_shoulder = track.positions("left_shoulder")
     right_shoulder = track.positions("right_shoulder")
 
@@ -433,6 +669,15 @@ def get_pixel_to_meter_ratio(
 
 
 def get_punch_speed_threshold(track: PersonTrack):
+    """
+    Calculates punch speed threshold based on fixed real life value.
+
+    Args:
+        track: PersonTrack object
+
+    Returns:
+        Numpy array containing the threshold at each frame in pixels per second.
+    """
     pixel_to_m_ratio = get_pixel_to_meter_ratio(track)
     thresholds = 5 / pixel_to_m_ratio
     return thresholds
@@ -443,13 +688,32 @@ def get_punch_speed_threshold(track: PersonTrack):
 # ========================================================================= #
 
 def detect_straight(track: PersonTrack, side: Side, config: Config) -> np.ndarray:
+    """
+    Detects when a straight punch occurs.
+
+    Args:
+        track: PersonTrack object
+        side: Side which the strike is, left or right
+        config: Config object
+
+    Returns:
+        Numpy array which is a boolean mask where which detects if a punch occured for
+        each frame.
+    """
+
     speed = get_joint_speed(track, f"{side}_wrist", config)
     thresholds = get_relative_speed_threshold(speed, config)
-    extended = (
-        get_joint_angle(track, f"{side}_shoulder", f"{side}_elbow", f"{side}_wrist")
-        > config.extension_angle_threshold
+
+    arm_lifted = (
+        get_joint_angle(track, f"{side}_hip", f"{side}_shoulder", f"{side}_elbow" )
+        > config.arm_body_angle_threshold
     )
-    return extended & (speed > thresholds)
+
+    arm_extended = (
+        get_joint_angle(track, f"{side}_shoulder", f"{side}_elbow", f"{side}_wrist")
+        > config.arm_extension_angle_threshold
+    )
+    return arm_extended & arm_lifted & (speed > thresholds)
 
 DETECTORS = {
     "straight" : detect_straight,
@@ -464,6 +728,16 @@ class MoveAnalyser:
         self.thresholds = get_punch_speed_threshold(track)
 
     def get_detections(self) -> Detections:
+        """
+        Detects strikes for each strike type.
+
+        Args:
+            track: PersonTrack object
+            config: Config object
+
+        Returns:
+            Detection object containing information on when a strike occurs.
+        """
         strikes = tuple(
             Strike(technique, side)
             for technique in DETECTORS
@@ -479,6 +753,9 @@ class MoveAnalyser:
 
 
 class VelocityInspector:
+    """
+    Inspector tool to get stats on speed in the video for debugging.
+    """
     def __init__(self, speed: np.ndarray, track: PersonTrack | None = None):
         self.speed = speed
         self.track = track
@@ -486,6 +763,16 @@ class VelocityInspector:
     def get_stats(
             self, start: int | None = None, end: int | None = None
     ) -> dict[str, float]:
+        """
+        Gets stats about a given time window in the video.
+
+        Args:
+            start: First frame in the window frame.
+            end: Last frame in the window frame.
+
+        Returns:
+            Dictionary containing stats.
+        """
         window = self.speed[start:end]
         missing = np.isnan(window)
 
@@ -528,6 +815,26 @@ class VelocityInspector:
         return "\n".join(lines)
 
     def inspect_frame_pair(self, frame: int, *names: str) -> str:
+        """Inspect keypoint values for a frame and its previous frame.
+
+        Gets keypoint coordinates and confidence values for specified
+        joints at the given frame and the previous frame.
+
+        If no keypoints provided, right shoulder, right elbow, and right
+        wrist inspected by default.
+
+        Args:
+            frame: Frame index to inspect.
+            *names: Names of the keypoints to inspect.
+
+        Returns:
+            String containing keypoint values for selected
+            joints over the inspected frames.
+
+        Raises:
+            ValueError: If no PersonTrack is associated with the inspector.
+        """
+
         if self.track is None:
             raise ValueError("No track found.")
 
