@@ -1,9 +1,10 @@
 from pathlib import Path
+
 import cv2
 import numpy as np
 
 clip_path = (
-        Path("../assets") / "clips" / "Joshua Van vs Brandon Royval ｜"
+    Path("../assets") / "clips" / "Joshua Van vs Brandon Royval ｜"
     " FULL FIGHT ｜ UFC 328 [nwO2UPz7p28].webm"
 )
 

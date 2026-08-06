@@ -1,5 +1,6 @@
 import pytest
 
+
 @pytest.fixture()
 def get_wrist_velocities_test_data() -> list[int]:
     TEST_WRIST_TRACK = [

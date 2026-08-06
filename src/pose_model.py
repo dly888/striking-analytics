@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-import math
 from collections import defaultdict
+from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterator, Literal
+from typing import Literal
 
 import cv2
 import numpy as np
@@ -42,7 +42,7 @@ class Config:
 
     keypoint_conf: float = 0.4
     arm_extension_angle_threshold: float = 150.0
-    arm_body_angle_threshold: float= 35.0
+    arm_body_angle_threshold: float = 35.0
     velocity_percentile: float = 95.0
     max_hold: int = 6
     min_punch_frames: int = 1
@@ -172,14 +172,16 @@ def get_fps(path: Path) -> float:
 # TRACKING
 # ========================================================================= #
 
+
 @dataclass(frozen=True)
 class Person:
     """
     Stores data of the person.
     """
+
     name: str
     weight: float
-    height_m : float
+    height_m: float
     wingspan_m: float
     stance: Side
 
@@ -222,7 +224,9 @@ class PoseTracker:
     Tracks a person's pose keypoints and bounding boxes using YOLO pose model.
     """
 
-    def __init__(self, person: Person, model: str = "yolo26n-pose.pt", config: Config = Config()):
+    def __init__(
+        self, person: Person, model: str = "yolo26n-pose.pt", config: Config = Config()
+    ):
         self.model = YOLO(model)
         self.config = config
         self.person = person
@@ -275,12 +279,11 @@ class PoseTracker:
         }
 
     def _densify(
-
-            self,
-            track_id: int,
-            frames: dict[int, tuple],
-            frames_processed: int,
-            fps: float,
+        self,
+        track_id: int,
+        frames: dict[int, tuple],
+        frames_processed: int,
+        fps: float,
     ) -> PersonTrack:
         """
         Converts data tracked from model into PersonTrack object.
@@ -295,7 +298,9 @@ class PoseTracker:
             PersonTrack object.
         """
 
-        keypoints = np.full((frames_processed, N_KEYPOINTS, 3), np.nan, dtype=np.float32)
+        keypoints = np.full(
+            (frames_processed, N_KEYPOINTS, 3), np.nan, dtype=np.float32
+        )
         boxes = np.full((frames_processed, 4), np.nan, dtype=np.float32)
         box_conf = np.full(frames_processed, np.nan, dtype=np.float32)
 
@@ -326,12 +331,13 @@ class PoseTracker:
             reverse=True,
         )[:n]
 
+
 # ========================================================================= #
-# ANNOTATERS
+# ANNOTATORS
 # ========================================================================= #
 
 
-class VideoAnnotater:
+class VideoAnnotator:
     """
     Annotates a video using data tracked by the model.
     """
@@ -351,12 +357,9 @@ class VideoAnnotater:
 
         self.person_tracks.append((tracker, detections.expanded()))
 
-    def annotate_frame(self,
-                       person_track: PersonTrack,
-                       detections: Detections,
-                       frame,
-                       frame_idx: int):
-
+    def annotate_frame(
+        self, person_track: PersonTrack, detections: Detections, frame, frame_idx: int
+    ):
         """
         Annotates a single frame.
 
@@ -409,11 +412,10 @@ class VideoAnnotater:
                     2,
                 )
 
-
     def annotate_video(
-            self,
-            video_path: Path,
-            new_file_path: str,
+        self,
+        video_path: Path,
+        new_file_path: str,
     ) -> None:
         """
         Annotates the entire video with: a box around persons tracked, ID label,
@@ -463,11 +465,13 @@ class VideoAnnotater:
 # DETECTIONS
 # ========================================================================= #
 
+
 @dataclass(frozen=True)
 class Strike:
     """
     Stores data for each type of strike i.e left straight, right hook, left roundhouse
     """
+
     strike_type: str
     side: Side
 
@@ -484,6 +488,7 @@ class Detections:
     Uses a boolean mask to identify when a strike occurs, where each index is a frame in teh video.
     Contains a boolean mask for each strike object.
     """
+
     strikes: tuple[Strike, ...]
     mask: np.ndarray
 
@@ -543,7 +548,7 @@ class Detections:
         starts, _ = segment_bounds(self[strike])
         return starts
 
-    def expanded(self, before: int = 0, after: int = 30) -> "Detections":
+    def expanded(self, before: int = 0, after: int = 30) -> Detections:
         """Create a window around each detection so the annotation remains
         visible for multiple frames.
 
@@ -564,9 +569,11 @@ class Detections:
 
         return Detections(self.strikes, expanded)
 
+
 # ========================================================================= #
 # FEATURES
 # ========================================================================= #
+
 
 def get_joint_speed(track: PersonTrack, name: str, config: Config) -> np.ndarray:
     """Calculate the speed of a joint in pixels per second.
@@ -603,6 +610,7 @@ def get_joint_speed(track: PersonTrack, name: str, config: Config) -> np.ndarray
 
     return speed
 
+
 def get_joint_angle(track: PersonTrack, a: str, b: str, c: str) -> np.ndarray:
     """
     Gets the angle between three joints.
@@ -622,6 +630,7 @@ def get_joint_angle(track: PersonTrack, a: str, b: str, c: str) -> np.ndarray:
         track.positions(c),
     )
 
+
 def get_relative_speed_threshold(speed: np.ndarray, config: Config) -> float:
     """
     Calculates the speed threshold using a top n percentile based on the entire video, set at config.
@@ -637,6 +646,7 @@ def get_relative_speed_threshold(speed: np.ndarray, config: Config) -> float:
     if not np.any(~np.isnan(speed)):
         return np.inf
     return float(np.nanpercentile(speed, config.velocity_percentile))
+
 
 def get_pixel_to_meter_ratio(
     track: PersonTrack,
@@ -687,6 +697,7 @@ def get_punch_speed_threshold(track: PersonTrack):
 # DETECTORS
 # ========================================================================= #
 
+
 def detect_straight(track: PersonTrack, side: Side, config: Config) -> np.ndarray:
     """
     Detects when a straight punch occurs.
@@ -705,7 +716,7 @@ def detect_straight(track: PersonTrack, side: Side, config: Config) -> np.ndarra
     thresholds = get_relative_speed_threshold(speed, config)
 
     arm_lifted = (
-        get_joint_angle(track, f"{side}_hip", f"{side}_shoulder", f"{side}_elbow" )
+        get_joint_angle(track, f"{side}_hip", f"{side}_shoulder", f"{side}_elbow")
         > config.arm_body_angle_threshold
     )
 
@@ -715,8 +726,9 @@ def detect_straight(track: PersonTrack, side: Side, config: Config) -> np.ndarra
     )
     return arm_extended & arm_lifted & (speed > thresholds)
 
+
 DETECTORS = {
-    "straight" : detect_straight,
+    "straight": detect_straight,
     # Add other strikes later
 }
 
@@ -756,12 +768,13 @@ class VelocityInspector:
     """
     Inspector tool to get stats on speed in the video for debugging.
     """
+
     def __init__(self, speed: np.ndarray, track: PersonTrack | None = None):
         self.speed = speed
         self.track = track
 
     def get_stats(
-            self, start: int | None = None, end: int | None = None
+        self, start: int | None = None, end: int | None = None
     ) -> dict[str, float]:
         """
         Gets stats about a given time window in the video.
@@ -854,15 +867,15 @@ class VelocityInspector:
 
 
 def main(
-        video_path: Path,
-        person: Person,
-        model: str = "yolo26n-pose.pt",
-        fighters: int = 1,
-        config: Config = Config(),
+    video_path: Path,
+    person: Person,
+    model: str = "yolo26n-pose.pt",
+    fighters: int = 1,
+    config: Config = Config(),
 ) -> None:
     tracker = PoseTracker(model=model, config=config, person=person)
     person_tracker = tracker.get_person_tracker(video_path)
-    video_annotater = VideoAnnotater(config=config)
+    video_annotater = VideoAnnotator(config=config)
 
     if not person_tracker:
         print("No people were tracked.")
@@ -889,23 +902,21 @@ def main(
                 f"{VelocityInspector(get_joint_speed(track, f'{side}_wrist', config)).get_stats()}"
             )
 
-    video_annotater.annotate_video(video_path=video_path, new_file_path="../outputs/annotate_test_0003.mp4")
+    video_annotater.annotate_video(
+        video_path=video_path, new_file_path="../outputs/annotate_test_0003.mp4"
+    )
 
 
 if __name__ == "__main__":
     FRAME_PATH = Path("../assets") / "frames" / "Van Vs Royval" / "frame_00400.jpg"
     VIDEO_PATH = (
-            Path("../assets")
-            / "clips"
-            / "Joshua Van vs Brandon Royval ｜ FULL FIGHT ｜ UFC 328 [nwO2UPz7p28].webm"
+        Path("../assets")
+        / "clips"
+        / "Joshua Van vs Brandon Royval ｜ FULL FIGHT ｜ UFC 328 [nwO2UPz7p28].webm"
     )
 
     royval = Person(
-        name="Brandon Royval",
-        height_m=1.75,
-        weight=57,
-        wingspan_m=1.73,
-        stance="left"
+        name="Brandon Royval", height_m=1.75, weight=57, wingspan_m=1.73, stance="left"
     )
 
     main(video_path=VIDEO_PATH, person=royval)
