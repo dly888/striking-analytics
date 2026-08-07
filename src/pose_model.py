@@ -3,10 +3,11 @@ from __future__ import annotations
 from collections import defaultdict
 from collections.abc import Iterator
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, asdict
 from pathlib import Path
 from typing import Literal
 
+import json
 import cv2
 import numpy as np
 from ultralytics import YOLO
@@ -41,8 +42,6 @@ class Config:
     """Configuration parameters controlling detection thresholds and tracking behaviour."""
 
     keypoint_conf: float = 0.4
-    arm_extension_angle_threshold: float = 150.0
-    arm_body_angle_threshold: float = 35.0
     velocity_percentile: float = 95.0
     max_hold: int = 6
     min_punch_frames: int = 1
@@ -225,7 +224,7 @@ class PoseTracker:
     """
 
     def __init__(
-        self, person: Person, model: str = "yolo26n-pose.pt", config: Config = Config()
+            self, person: Person, model: str = "yolo26n-pose.pt", config: Config = Config()
     ):
         self.model = YOLO(model)
         self.config = config
@@ -279,11 +278,11 @@ class PoseTracker:
         }
 
     def _densify(
-        self,
-        track_id: int,
-        frames: dict[int, tuple],
-        frames_processed: int,
-        fps: float,
+            self,
+            track_id: int,
+            frames: dict[int, tuple],
+            frames_processed: int,
+            fps: float,
     ) -> PersonTrack:
         """
         Converts data tracked from model into PersonTrack object.
@@ -291,7 +290,7 @@ class PoseTracker:
         Args:
             track_id: ID that the model uses to track the person.
             frames: Dictionary containing the frame index and the actual OpenCV frame read.
-            frames_proccessed: Number of frames processed by the model.
+            frames_processed: Number of frames processed by the model.
             fps: FPS of the video.
 
         Returns:
@@ -357,8 +356,9 @@ class VideoAnnotator:
 
         self.person_tracks.append((tracker, detections.expanded()))
 
+    @staticmethod
     def annotate_frame(
-        self, person_track: PersonTrack, detections: Detections, frame, frame_idx: int
+            person_track: PersonTrack, detections: Detections, frame, frame_idx: int
     ):
         """
         Annotates a single frame.
@@ -401,7 +401,7 @@ class VideoAnnotator:
         #     )
 
         for row, strike in enumerate(detections.active_at(frame_idx)):
-            if strike.strike_type == "straight" and strike.side == "right":
+            if strike.strike_type == "hook" and strike.side == "right":
                 cv2.putText(
                     frame,
                     strike.label,
@@ -413,9 +413,9 @@ class VideoAnnotator:
                 )
 
     def annotate_video(
-        self,
-        video_path: Path,
-        new_file_path: str,
+            self,
+            video_path: Path,
+            new_file_path: str,
     ) -> None:
         """
         Annotates the entire video with: a box around persons tracked, ID label,
@@ -423,7 +423,7 @@ class VideoAnnotator:
 
         Args:
             video_path: Path of the video file.
-            new_path_file: The path of the new annotated video file.
+            new_file_path: The path of the new annotated video file.
         """
 
         with open_video(video_path) as cap:
@@ -467,11 +467,20 @@ class VideoAnnotator:
 
 
 @dataclass(frozen=True)
+class StrikeConfig:
+    straight_angle_threshold: float = 150.0  # Minimum angle to be considered a hook
+    hook_angle_threshold: float = 100  # Maximum angle to be considered a hook
+    arm_body_angle_threshold: float = 35.0  # Minimum angle to not be considered an arm swing down
+    velocity_percentile: float = 95.0
+    max_hold: int = 6
+    min_punch_frames: int = 1
+
+
+@dataclass(frozen=True)
 class Strike:
     """
-    Stores data for each type of strike i.e left straight, right hook, left roundhouse
+    Stores data for each type of strike i.e. left straight, right hook, left roundhouse
     """
-
     strike_type: str
     side: Side
 
@@ -488,7 +497,6 @@ class Detections:
     Uses a boolean mask to identify when a strike occurs, where each index is a frame in teh video.
     Contains a boolean mask for each strike object.
     """
-
     strikes: tuple[Strike, ...]
     mask: np.ndarray
 
@@ -521,10 +529,10 @@ class Detections:
 
     def counts(self, min_frames: int = 1) -> dict[Strike, int]:
         """
-        Counts the strike occurance for each strike type.
+        Counts the strike occurrence for each strike type.
 
         Args:
-            min_frames: Minumum number of frames a strike needs to be detected for to be counted for.
+            min_frames: Minimum number of frames a strike needs to be detected for to be counted for.
 
         Returns:
             Dictionary containing each strike and its count.
@@ -575,7 +583,7 @@ class Detections:
 # ========================================================================= #
 
 
-def get_joint_speed(track: PersonTrack, name: str, config: Config) -> np.ndarray:
+def get_joint_speed(track: PersonTrack, name: str, config: StrikeConfig) -> np.ndarray:
     """Calculate the speed of a joint in pixels per second.
 
     Missing keypoint detections handled by using the most recent valid
@@ -631,7 +639,7 @@ def get_joint_angle(track: PersonTrack, a: str, b: str, c: str) -> np.ndarray:
     )
 
 
-def get_relative_speed_threshold(speed: np.ndarray, config: Config) -> float:
+def get_relative_speed_threshold(speed: np.ndarray, config: StrikeConfig) -> float:
     """
     Calculates the speed threshold using a top n percentile based on the entire video, set at config.
 
@@ -649,7 +657,7 @@ def get_relative_speed_threshold(speed: np.ndarray, config: Config) -> float:
 
 
 def get_pixel_to_meter_ratio(
-    track: PersonTrack,
+        track: PersonTrack,
 ) -> np.ndarray:
     """
     Calculates pixel-to-meter conversion ratio for each frame.
@@ -698,7 +706,7 @@ def get_punch_speed_threshold(track: PersonTrack):
 # ========================================================================= #
 
 
-def detect_straight(track: PersonTrack, side: Side, config: Config) -> np.ndarray:
+def detect_straight(track: PersonTrack, side: Side, config: StrikeConfig) -> np.ndarray:
     """
     Detects when a straight punch occurs.
 
@@ -708,7 +716,7 @@ def detect_straight(track: PersonTrack, side: Side, config: Config) -> np.ndarra
         config: Config object
 
     Returns:
-        Numpy array which is a boolean mask where which detects if a punch occured for
+        Numpy array which is a boolean mask where which detects if a punch occurred for
         each frame.
     """
 
@@ -716,25 +724,44 @@ def detect_straight(track: PersonTrack, side: Side, config: Config) -> np.ndarra
     thresholds = get_relative_speed_threshold(speed, config)
 
     arm_lifted = (
-        get_joint_angle(track, f"{side}_hip", f"{side}_shoulder", f"{side}_elbow")
-        > config.arm_body_angle_threshold
+            get_joint_angle(track, f"{side}_hip", f"{side}_shoulder", f"{side}_elbow")
+            > config.arm_body_angle_threshold
     )
 
     arm_extended = (
-        get_joint_angle(track, f"{side}_shoulder", f"{side}_elbow", f"{side}_wrist")
-        > config.arm_extension_angle_threshold
+            get_joint_angle(track, f"{side}_shoulder", f"{side}_elbow", f"{side}_wrist")
+            > config.straight_angle_threshold
     )
+    return arm_extended & arm_lifted & (speed > thresholds)
+
+
+def detect_hook(track: PersonTrack, side: Side, config: StrikeConfig) -> np.ndarray:
+    speed = get_joint_speed(track, f"{side}_wrist", config)
+    thresholds = get_relative_speed_threshold(speed, config)
+
+    arm_lifted = (
+            get_joint_angle(track, f"{side}_hip", f"{side}_shoulder", f"{side}_elbow")
+            > config.arm_body_angle_threshold
+    )
+
+    # Use hook angle threshold as maximum not minimum here
+    arm_extended = (
+            get_joint_angle(track, f"{side}_shoulder", f"{side}_elbow", f"{side}_wrist")
+            < config.hook_angle_threshold
+    )
+
     return arm_extended & arm_lifted & (speed > thresholds)
 
 
 DETECTORS = {
     "straight": detect_straight,
+    "hook": detect_hook,
     # Add other strikes later
 }
 
 
 class MoveAnalyser:
-    def __init__(self, track: PersonTrack, config: Config = Config()):
+    def __init__(self, track: PersonTrack, config: StrikeConfig = StrikeConfig()):
         self.track = track
         self.config = config
         self.thresholds = get_punch_speed_threshold(track)
@@ -742,10 +769,6 @@ class MoveAnalyser:
     def get_detections(self) -> Detections:
         """
         Detects strikes for each strike type.
-
-        Args:
-            track: PersonTrack object
-            config: Config object
 
         Returns:
             Detection object containing information on when a strike occurs.
@@ -774,7 +797,7 @@ class VelocityInspector:
         self.track = track
 
     def get_stats(
-        self, start: int | None = None, end: int | None = None
+            self, start: int | None = None, end: int | None = None
     ) -> dict[str, float]:
         """
         Gets stats about a given time window in the video.
@@ -854,11 +877,70 @@ class VelocityInspector:
         lines = []
         for name in names or ("right_shoulder", "right_elbow", "right_wrist"):
             values = self.track.keypoints[
-                max(0, frame - 1) : frame + 1, KEYPOINT_INDEX[name]
+                max(0, frame - 1): frame + 1, KEYPOINT_INDEX[name]
             ]
             lines.append(f"{name:16s} {np.array2string(values, precision=1)}")
 
         return "\n".join(lines)
+
+
+class TrackCache:
+    def __init__(self):
+        self.person_tracks = []
+
+    def add_person_track(self, track: PersonTrack):
+        """
+        Add a PersonTrack object to be serialised.
+
+        Args:
+            track: PersonTrack object to be added to be serialised.
+        """
+        self.person_tracks.append(track)
+
+
+    def save_track(self, track: PersonTrack, new_path: Path) -> None:
+        """
+        Serialise a single PersonTrack object.
+
+        Args:
+            track: PersonTrack object to be serialised.
+            new_path: Path which the track object will be serialised to.
+        """
+        meta = {
+            "track_id": track.track_id,
+            "fps": track.fps,
+            "person": asdict(track.person),
+        }
+        new_path.parent.mkdir(parents=True, exist_ok=True)
+        np.savez_compressed(
+            new_path,
+            keypoints=track.keypoints,
+            boxes=track.boxes,
+            box_conf=track.box_conf,
+            _meta=np.frombuffer(json.dumps(meta).encode(), dtype=np.uint8),
+        )
+
+
+    def load_track(self, path: Path) -> PersonTrack:
+        """
+        Deserialize a file into PersonTrack object.
+
+        Args:
+            path: Path to file which will be deserialized.
+
+        Return:
+            Deserialized PersonTrack object.
+        """
+        with np.load(path) as data:
+            meta = json.loads(bytes(data["_meta"]))
+            return PersonTrack(
+                track_id=meta["track_id"],
+                keypoints=data["keypoints"],
+                boxes=data["boxes"],
+                box_conf=data["box_conf"],
+                fps=meta["fps"],
+                person=Person(**meta["person"]),
+            )
 
 
 # ========================================================================= #
@@ -867,15 +949,16 @@ class VelocityInspector:
 
 
 def main(
-    video_path: Path,
-    person: Person,
-    model: str = "yolo26n-pose.pt",
-    fighters: int = 1,
-    config: Config = Config(),
+        video_path: Path,
+        person: Person,
+        model: str = "yolo26n-pose.pt",
+        fighters: int = 1,
+        config: Config = Config(),
 ) -> None:
     tracker = PoseTracker(model=model, config=config, person=person)
     person_tracker = tracker.get_person_tracker(video_path)
     video_annotater = VideoAnnotator(config=config)
+    strike_config = StrikeConfig()
 
     if not person_tracker:
         print("No people were tracked.")
@@ -883,7 +966,7 @@ def main(
 
     for track_id in tracker.get_top_n_ids(person_tracker, n=fighters):
         track = person_tracker[track_id]
-        detections = MoveAnalyser(track, config=config).get_detections()
+        detections = MoveAnalyser(track, config=strike_config).get_detections()
         video_annotater.add_tracker(track, detections)
 
         print(
@@ -899,7 +982,7 @@ def main(
         for side in ("left", "right"):
             print(
                 f"  {side} wrist stats: "
-                f"{VelocityInspector(get_joint_speed(track, f'{side}_wrist', config)).get_stats()}"
+                f"{VelocityInspector(get_joint_speed(track, f'{side}_wrist', strike_config)).get_stats()}"
             )
 
     video_annotater.annotate_video(
@@ -910,9 +993,9 @@ def main(
 if __name__ == "__main__":
     FRAME_PATH = Path("../assets") / "frames" / "Van Vs Royval" / "frame_00400.jpg"
     VIDEO_PATH = (
-        Path("../assets")
-        / "clips"
-        / "Joshua Van vs Brandon Royval ｜ FULL FIGHT ｜ UFC 328 [nwO2UPz7p28].webm"
+            Path("../assets")
+            / "clips"
+            / "Joshua Van vs Brandon Royval ｜ FULL FIGHT ｜ UFC 328 [nwO2UPz7p28].webm"
     )
 
     royval = Person(
