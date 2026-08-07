@@ -6,14 +6,14 @@ from pathlib import Path
 
 import numpy as np
 
-from .tracking import Person, PersonTrack
+from .tracking import Person, PersonState
 
 
 class TrackCache:
     def __init__(self):
         self.person_tracks = []
 
-    def add_person_track(self, track: PersonTrack):
+    def add_person_track(self, track: PersonState):
         """
         Add a PersonTrack object to be serialised.
 
@@ -22,7 +22,7 @@ class TrackCache:
         """
         self.person_tracks.append(track)
 
-    def save_track(self, track: PersonTrack, new_path: Path) -> None:
+    def save_track(self, track: PersonState, new_path: Path) -> None:
         """
         Serialise a single PersonTrack object.
 
@@ -44,7 +44,7 @@ class TrackCache:
             _meta=np.frombuffer(json.dumps(meta).encode(), dtype=np.uint8),
         )
 
-    def load_track(self, path: Path) -> PersonTrack:
+    def load_track(self, path: Path) -> PersonState:
         """
         Deserialize a file into PersonTrack object.
 
@@ -56,7 +56,7 @@ class TrackCache:
         """
         with np.load(path) as data:
             meta = json.loads(bytes(data["_meta"]))
-            return PersonTrack(
+            return PersonState(
                 track_id=meta["track_id"],
                 keypoints=data["keypoints"],
                 boxes=data["boxes"],

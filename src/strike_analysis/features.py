@@ -2,12 +2,13 @@ from __future__ import annotations
 
 import numpy as np
 
+from . import Strike, Side
 from .config import StrikeConfig
 from .geometry import calculate_angles
-from .tracking import PersonTrack
+from .tracking import PersonState
 
 
-def get_joint_speed(track: PersonTrack, name: str, config: StrikeConfig) -> np.ndarray:
+def get_joint_speed(track: PersonState, name: str, config: StrikeConfig) -> np.ndarray:
     """Calculate the speed of a joint in pixels per second.
 
     Missing keypoint detections handled by using the most recent valid
@@ -42,8 +43,91 @@ def get_joint_speed(track: PersonTrack, name: str, config: StrikeConfig) -> np.n
 
     return speed
 
+def get_wrist_angular_speed(track: PersonState, side: Side, config: StrikeConfig) -> np.ndarray:
+    """
+    Calculates wrist angular speed relative to corresponding shoulder in degrees per second.
 
-def get_joint_angle(track: PersonTrack, a: str, b: str, c: str) -> np.ndarray:
+    Args:
+        track: PersonTrack object
+        side: The side which the wrist is on
+        config: Strike config
+
+    Returns:
+        Numpy array containing current angular speed at each frame
+    """
+    wrist_xy = track.positions(f"{side}_wrist")
+    shoulder_xy = track.positions(f"{side}_shoulder")
+
+    delta = wrist_xy - shoulder_xy
+    angle = np.degrees(np.arctan2(delta[:, 1], delta[:, 0]))
+
+    visible = ~np.isnan(angle)
+    frames = np.arange(len(angle))
+
+    seen_at_or_before = np.maximum.accumulate(np.where(visible, frames, -1))
+    previous = np.roll(seen_at_or_before, 1)
+    previous[0] = -1
+    gap = frames - previous
+    measurable = visible & (previous >= 0) & (gap <= config.max_hold + 1)
+
+    # Signed change, wrapped into [-180, 180) to handle the atan2 seam
+    d_angle = angle[measurable] - angle[previous[measurable]]
+    d_angle = (d_angle + 180.0) % 360.0 - 180.0
+
+    angular_speed = np.full(len(angle), np.nan)
+    angular_speed[measurable] = np.abs(d_angle) * track.fps / gap[measurable]
+
+    return angular_speed
+
+def get_arm_sweep_speed(track: PersonState, side: Side, config: StrikeConfig) -> np.ndarray:
+    """
+    Calculates wrist angular speed relative to shoulder line in degrees per second.
+    Prevents false detections when fighter spins around with arm in air.
+
+    Args:
+        track: PersonTrack object
+        side: The side which the wrist is on
+        config: Strike config
+
+    Returns:
+        Numpy array containing current angular speed at each frame
+    """
+    opposite = "left" if side == "right" else "right"
+
+    b = track.positions(f"{side}_shoulder")     # striking shoulder
+    a = track.positions(f"{opposite}_shoulder") # opposite shoulder
+    c = track.positions(f"{side}_wrist")
+
+    u = a - b  # shoulder line/vector
+    v = c - b  # arm line/vector
+
+    cross_product = u[:, 0] * v[:, 1] - u[:, 1] * v[:, 0]
+    dot_product = u[:, 0] * v[:, 0] + u[:, 1] * v[:, 1]
+    angle = np.degrees(np.arctan2(cross_product, dot_product))  # signed, (-180, 180], NaN propagates
+
+    visible = ~np.isnan(angle)
+    frames = np.arange(len(angle))
+
+    seen_at_or_before = np.maximum.accumulate(np.where(visible, frames, -1))
+    previous = np.roll(seen_at_or_before, 1)
+    previous[0] = -1
+
+    gap = frames - previous
+    measurable = visible & (previous >= 0) & (gap <= config.max_hold + 1)
+
+    d_angle = angle[measurable] - angle[previous[measurable]]
+    d_angle = (d_angle + 180.0) % 360.0 - 180.0  # shortest rotation between frames
+
+    # Makes sure to only detect wrist movement inwards(towards the opposite shoulder)
+    closing = -np.sign(angle[previous[measurable]]) * d_angle
+
+    sweep = np.full(len(angle), np.nan)
+    sweep[measurable] = closing * track.fps / gap[measurable]
+
+    return sweep
+
+
+def get_joint_angle(track: PersonState, a: str, b: str, c: str) -> np.ndarray:
     """
     Gets the angle between three joints.
 
@@ -63,7 +147,7 @@ def get_joint_angle(track: PersonTrack, a: str, b: str, c: str) -> np.ndarray:
     )
 
 
-def get_relative_speed_threshold(speed: np.ndarray, config: StrikeConfig) -> float:
+def get_relative_speed_threshold(speed: np.ndarray, config: StrikeConfig, strike_type: str) -> float:
     """
     Calculates the speed threshold using a top n percentile based on the entire video, set at config.
 
@@ -75,13 +159,18 @@ def get_relative_speed_threshold(speed: np.ndarray, config: StrikeConfig) -> flo
         The calculated speed threshold. Returns infinity if no valid speed
         values are available.
     """
+    strike_percentile_dict = {
+        "straight": config.straight_speed_percentile,
+        "hook": config.hook_angle_speed_percentile
+    }
+
     if not np.any(~np.isnan(speed)):
         return np.inf
-    return float(np.nanpercentile(speed, config.velocity_percentile))
+    return float(np.nanpercentile(speed, strike_percentile_dict[strike_type]))
 
 
 def get_pixel_to_meter_ratio(
-        track: PersonTrack,
+        track: PersonState,
 ) -> np.ndarray:
     """
     Calculates pixel-to-meter conversion ratio for each frame.
@@ -110,7 +199,7 @@ def get_pixel_to_meter_ratio(
     return ratio
 
 
-def get_punch_speed_threshold(track: PersonTrack):
+def get_punch_speed_threshold(track: PersonState):
     """
     Calculates punch speed threshold based on fixed real life value.
 

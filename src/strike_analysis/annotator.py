@@ -7,7 +7,7 @@ import numpy as np
 
 from .config import Config
 from .detections import Detections
-from .tracking import PersonTrack
+from .tracking import PersonState
 from .video import get_fps, open_video
 
 
@@ -17,10 +17,10 @@ class VideoAnnotator:
     """
 
     def __init__(self, config: Config = Config()):
-        self.person_tracks: list[tuple[PersonTrack, Detections]] = []
+        self.person_tracks: list[tuple[PersonState, Detections]] = []
         self.config = config
 
-    def add_tracker(self, tracker: PersonTrack, detections: Detections):
+    def add_tracker(self, tracker: PersonState, detections: Detections):
         """
         Adds a PersonTrack object for VideoAnnotater to include in the video annotations.
 
@@ -33,7 +33,7 @@ class VideoAnnotator:
 
     @staticmethod
     def annotate_frame(
-            person_track: PersonTrack, detections: Detections, frame, frame_idx: int
+            person_track: PersonState, detections: Detections, frame, frame_idx: int
     ):
         """
         Annotates a single frame.

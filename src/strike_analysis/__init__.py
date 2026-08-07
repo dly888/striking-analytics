@@ -13,7 +13,7 @@ from .features import (
 )
 from .geometry import calculate_angles, count_segments, longest_nan_run, segment_bounds
 from .inspector import VelocityInspector
-from .tracking import Person, PersonTrack, PoseTracker
+from .tracking import Person, PersonState, PoseTracker
 from .video import get_fps, open_video
 
 __all__ = [
@@ -24,7 +24,7 @@ __all__ = [
     "KEYPOINT_INDEX",
     "N_KEYPOINTS",
     "Person",
-    "PersonTrack",
+    "PersonState",
     "PoseTracker",
     "Strike",
     "Detections",

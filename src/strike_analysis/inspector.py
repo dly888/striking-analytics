@@ -4,7 +4,7 @@ import numpy as np
 
 from .constants import KEYPOINT_INDEX
 from .geometry import longest_nan_run
-from .tracking import PersonTrack
+from .tracking import PersonState
 
 
 class VelocityInspector:
@@ -12,7 +12,7 @@ class VelocityInspector:
     Inspector tool to get stats on speed in the video for debugging.
     """
 
-    def __init__(self, speed: np.ndarray, track: PersonTrack | None = None):
+    def __init__(self, speed: np.ndarray, track: PersonState | None = None):
         self.speed = speed
         self.track = track
 
