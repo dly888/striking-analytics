@@ -26,7 +26,7 @@ class Person:
 
 
 @dataclass(frozen=True)
-class PersonTrack:
+class PersonState:
     """
     Stores data on the tracking of the person.
     """
@@ -61,21 +61,38 @@ class PoseTracker:
     def __init__(
             self, person: Person, model: str = "yolo26n-pose.pt", config: Config = Config()
     ):
+        self.person_tracker = None
         self.model = YOLO(model)
         self.config = config
         self.person = person
+        self.person_tracker = None
 
-    def get_person_tracker(self, video_path: Path) -> dict[int, PersonTrack]:
+    def get_person_track(self, person: Person) -> PersonState:
         """
-        Runs model on video and gets data of the person in the video.
+        PersonTrack object of Person inputted
+
+        Args:
+            person: The person who's person_track will be returned
+
+        Returns:
+            PersonTrack object of the Person inputted.
+        """
+        if self.person_tracker is None:
+            raise ValueError("No persons has been tracked yet. Please run get_person_tracker to track.")
+
+        for _ , person_track in self.person_tracker.items():
+            if person_track.person == person:
+                return person_track
+        else:
+            raise ValueError("Person not tracked.")
+
+    def track(self, video_path: Path) -> None:
+        """
+        Runs model on video and tracks the state(boxes, keypoints) of the person in the video.
 
         Args:
             video_path: Path of the video file.
-
-        Returns:
-            Dictionary containing the id and PersonTrack object.
         """
-
         fps = get_fps(video_path)
         detections: dict[int, dict[int, tuple]] = defaultdict(dict)
         frames_processed = 0
@@ -107,10 +124,11 @@ class PoseTracker:
                     box_conf[det_idx],
                 )
 
-        return {
+        self.person_tracker = {
             track_id: self._densify(track_id, frames, frames_processed, fps)
             for track_id, frames in detections.items()
         }
+
 
     def _densify(
             self,
@@ -118,7 +136,7 @@ class PoseTracker:
             frames: dict[int, tuple],
             frames_processed: int,
             fps: float,
-    ) -> PersonTrack:
+    ) -> PersonState:
         """
         Converts data tracked from model into PersonTrack object.
 
@@ -145,22 +163,20 @@ class PoseTracker:
 
         keypoints[keypoints[:, :, 2] < self.config.keypoint_conf] = np.nan
 
-        return PersonTrack(track_id, keypoints, boxes, box_conf, fps, self.person)
+        return PersonState(track_id, keypoints, boxes, box_conf, fps, self.person)
 
-    @staticmethod
-    def get_top_n_ids(person_tracker: dict[int, PersonTrack], n: int = 2) -> list[int]:
+    def get_top_n_ids(self, n: int = 2) -> list[int]:
         """
         Gets the ids of persons with the top n longest appearances in the video by the model.
 
         Args:
-            person_tracker: Dictionary containing model id and PersonTrack.
             n: The number of persons to be returned.
 
         Returns:
             List of the top n most appeared persons.
         """
         return sorted(
-            person_tracker,
-            key=lambda track_id: int(person_tracker[track_id].detected.sum()),
+            self.person_tracker,
+            key=lambda track_id: int(self.person_tracker[track_id].detected.sum()),
             reverse=True,
         )[:n]
