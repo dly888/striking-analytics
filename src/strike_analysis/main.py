@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from strike_analysis import TrackCache
 from .annotator import VideoAnnotator
 from .config import Config, StrikeConfig
 from .detectors import MoveAnalyser
@@ -17,8 +18,19 @@ def main(
         fighters: int = 1,
         config: Config = Config(),
 ) -> None:
+    track_cache = TrackCache()
+    tracker_path = Path("../outputs/royval.json")
     tracker = PoseTracker(model=model, config=config, person=person)
-    person_tracker = tracker.get_person_tracker(video_path)
+
+    if tracker_path.exists():
+        person_tracker = track_cache.load_track(path=tracker_path)
+    else:
+        tracker.track(video_path)
+        person_tracker = tracker.person_tracker
+        person_state = tracker.get_person_track(person=person)
+        track_cache.save_track(track=person_state, new_path=tracker_path)
+
+
     video_annotater = VideoAnnotator(config=config)
     strike_config = StrikeConfig()
 
@@ -26,7 +38,7 @@ def main(
         print("No people were tracked.")
         return
 
-    for track_id in tracker.get_top_n_ids(person_tracker, n=fighters):
+    for track_id in tracker.get_top_n_ids(n=fighters):
         track = person_tracker[track_id]
         detections = MoveAnalyser(track, config=strike_config).get_detections()
         video_annotater.add_tracker(track, detections)
