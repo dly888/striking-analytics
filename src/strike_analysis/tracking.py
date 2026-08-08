@@ -57,17 +57,16 @@ class PoseTracker:
     """
     Tracks a person's pose keypoints and bounding boxes using YOLO pose model.
     """
-
     def __init__(
-            self, person: Person, model: str = "yolo26n-pose.pt", config: Config = Config()
+            self, person: Person, model_name: str = "yolo26n-pose.pt", config: Config = Config()
     ):
-        self.person_tracker = None
-        self.model = YOLO(model)
+        self.person_states: dict[int, PersonState] = {}
+        self.model = YOLO(model_name)
+        self.model_name = model_name
         self.config = config
         self.person = person
-        self.person_tracker = None
 
-    def get_person_track(self, person: Person) -> PersonState:
+    def get_person_state(self, person: Person) -> PersonState:
         """
         PersonTrack object of Person inputted
 
@@ -77,12 +76,12 @@ class PoseTracker:
         Returns:
             PersonTrack object of the Person inputted.
         """
-        if self.person_tracker is None:
+        if self.person_states is None:
             raise ValueError("No persons has been tracked yet. Please run get_person_tracker to track.")
 
-        for _ , person_track in self.person_tracker.items():
-            if person_track.person == person:
-                return person_track
+        for _ , person_state in self.person_states.items():
+            if person_state.person == person:
+                return person_state
         else:
             raise ValueError("Person not tracked.")
 
@@ -124,7 +123,7 @@ class PoseTracker:
                     box_conf[det_idx],
                 )
 
-        self.person_tracker = {
+        self.person_states = {
             track_id: self._densify(track_id, frames, frames_processed, fps)
             for track_id, frames in detections.items()
         }
@@ -163,6 +162,7 @@ class PoseTracker:
 
         keypoints[keypoints[:, :, 2] < self.config.keypoint_conf] = np.nan
 
+        # Currently assigns the same Person object to every tracked fighter, change this later
         return PersonState(track_id, keypoints, boxes, box_conf, fps, self.person)
 
     def get_top_n_ids(self, n: int = 2) -> list[int]:
@@ -176,7 +176,7 @@ class PoseTracker:
             List of the top n most appeared persons.
         """
         return sorted(
-            self.person_tracker,
-            key=lambda track_id: int(self.person_tracker[track_id].detected.sum()),
+            self.person_states,
+            key=lambda track_id: int(self.person_states[track_id].detected.sum()),
             reverse=True,
         )[:n]

@@ -14,71 +14,95 @@ from .tracking import Person, PoseTracker
 def main(
         video_path: Path,
         person: Person,
+        root: Path,
         model: str = "yolo26n-pose.pt",
-        fighters: int = 1,
         config: Config = Config(),
 ) -> None:
     track_cache = TrackCache()
-    tracker_path = Path("../outputs/royval.json")
-    tracker = PoseTracker(model=model, config=config, person=person)
+    output_path = root / "outputs" / "pose_tracker.npz"
 
-    if tracker_path.exists():
-        person_tracker = track_cache.load_track(path=tracker_path)
+    if output_path.exists():
+        tracker = track_cache.load_pose_tracker(path=output_path)
     else:
-        tracker.track(video_path)
-        person_tracker = tracker.person_tracker
-        person_state = tracker.get_person_track(person=person)
-        track_cache.save_track(track=person_state, new_path=tracker_path)
+        tracker = PoseTracker(
+            person=person,
+            model_name=model,
+            config=Config()
+        )
+        tracker.track(video_path=video_path)
+        track_cache.save_pose_tracker(pose_tracker=tracker, new_path=output_path)
 
+    person_state = tracker.get_person_state(person=person)
 
     video_annotater = VideoAnnotator(config=config)
     strike_config = StrikeConfig()
 
-    if not person_tracker:
-        print("No people were tracked.")
+    if person_state is None:
+        print("Fighter not tracked.")
         return
 
-    for track_id in tracker.get_top_n_ids(n=fighters):
-        track = person_tracker[track_id]
-        detections = MoveAnalyser(track, config=strike_config).get_detections()
-        video_annotater.add_tracker(track, detections)
+    for track_id in tracker.get_top_n_ids(n=2):
+        person_state = tracker.person_states[track_id]
 
-        print(
-            f"\nTrack {track_id}: seen in "
-            f"{int(track.detected.sum())}/{track.frames_processed} frames"
+        detections = MoveAnalyser(
+            person_state,
+            config=strike_config,
+        ).get_detections()
+
+        video_annotater.add_tracker(
+            person_state,
+            detections,
         )
 
-        for strike, count in detections.counts(config.min_punch_frames).items():
-            starts = detections.start_frames(strike)
-            print(f"  {strike.label}: {count}")
-            print(f"  at frames: {[int(s) for s in starts]}")
+    print(
+        f"\nTrack {person_state.track_id}: seen in "
+        f"{int(person_state.detected.sum())}/{person_state.frames_processed} frames"
+    )
 
-        for side in ("left", "right"):
-            print(
-                f"  {side} wrist stats: "
-                f"{VelocityInspector(get_joint_speed(track, f'{side}_wrist', strike_config)).get_stats()}"
-            )
+    for strike, count in detections.counts(config.min_punch_frames).items():
+        starts = detections.start_frames(strike)
+        print(f"  {strike.label}: {count}")
+        print(f"  at frames: {[int(s) for s in starts]}")
+
+    for side in ("left", "right"):
+        print(
+            f"  {side} wrist stats: "
+            f"{VelocityInspector(
+                get_joint_speed(
+                    person_state,
+                    f"{side}_wrist",
+                    strike_config,
+                )
+            ).get_stats()}"
+        )
 
     video_annotater.annotate_video(
-        video_path=video_path, new_file_path="../outputs/annotate_test_0003.mp4"
+        video_path=video_path,
+        new_file_path=root / "outputs" / "annotate_test_0003.mp4",
     )
+
 
 if __name__ == "__main__":
     PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
     VIDEO_PATH = (
-        PROJECT_ROOT
-        / "assets"
-        / "clips"
-        / "Joshua Van vs Brandon Royval ｜ FULL FIGHT ｜ UFC 328 [nwO2UPz7p28].webm"
+            PROJECT_ROOT
+            / "assets"
+            / "clips"
+            / "Joshua Van vs Brandon Royval ｜ FULL FIGHT ｜ UFC 328 [nwO2UPz7p28].webm"
     )
 
     royval = Person(
-        name="Brandon Royval", height_m=1.75, weight=57, wingspan_m=1.73, stance="left"
+        name="Brandon Royval",
+        height_m=1.75,
+        weight=57,
+        wingspan_m=1.73,
+        stance="left",
     )
 
     main(
         video_path=VIDEO_PATH,
         person=royval,
+        root=PROJECT_ROOT,
         model=str(PROJECT_ROOT / "models" / "yolo26n-pose.pt"),
     )

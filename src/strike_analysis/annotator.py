@@ -90,7 +90,7 @@ class VideoAnnotator:
     def annotate_video(
             self,
             video_path: Path,
-            new_file_path: str,
+            new_file_path: Path,
     ) -> None:
         """
         Annotates the entire video with: a box around persons tracked, ID label,
