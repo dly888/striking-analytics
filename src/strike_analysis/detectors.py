@@ -46,29 +46,45 @@ def detect_straight(track: PersonState, strike: Strike, config: StrikeConfig) ->
     return arm_extended & arm_lifted & (speed > thresholds)
 
 
-def detect_hook(track: PersonState, strike: Strike, config: StrikeConfig) -> np.ndarray:
+def detect_hook(state: PersonState, strike: Strike, config: StrikeConfig) -> np.ndarray:
+    """
+    Detects whether a hook occurs.
+
+    Use three conditions:
+        - Arm is lifted high enough
+        - Elbow is bent enough
+        - The angular speed relative to the shoulder line is fast enough
+
+    Args:
+        state: PersonState object to detect from
+        strike: Information on the strike
+        config: Strike config values
+
+    Returns:
+        Numpy array which contains whether a hook is detected at each frame
+    """
     side = strike.side
     opposite = "left" if side == "right" else "right"
     strike_type = strike.strike_type
 
-    speed = get_arm_sweep_speed(track, side, config)
+    speed = get_arm_sweep_speed(state, side, config)
     thresholds = get_relative_speed_threshold(speed, config, strike_type)
 
     # Threshold is a minimum
     arm_lifted = (
-            get_joint_angle(track, f"{side}_hip", f"{side}_shoulder", f"{side}_elbow")
+            get_joint_angle(state, f"{side}_hip", f"{side}_shoulder", f"{side}_elbow")
             > config.arm_body_angle_threshold
     )
 
     # Threshold is a maximum
     arm_bent = (
-            get_joint_angle(track, f"{side}_shoulder", f"{side}_elbow", f"{side}_wrist")
+            get_joint_angle(state, f"{side}_shoulder", f"{side}_elbow", f"{side}_wrist")
             < config.hook_elbow_angle_threshold
     )
 
     # Threshold is a maximum
     shoulder_rotated = (
-            get_joint_angle(track, f"{opposite}_shoulder", f"{side}_shoulder", f"{side}_wrist")
+            get_joint_angle(state, f"{opposite}_shoulder", f"{side}_shoulder", f"{side}_wrist")
             < config.hook_wrist_shoulder_line_angle_threshold
     )
 

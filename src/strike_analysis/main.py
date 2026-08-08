@@ -41,18 +41,18 @@ def main(
         print("Fighter not tracked.")
         return
 
-    for track_id in tracker.get_top_n_ids(n=2):
-        person_state = tracker.person_states[track_id]
+    track_id = tracker.get_top_n_ids(n=1)[0]
+    person_state = tracker.person_states[track_id]
 
-        detections = MoveAnalyser(
-            person_state,
-            config=strike_config,
-        ).get_detections()
+    detections = MoveAnalyser(
+        person_state,
+        config=strike_config,
+    ).get_detections()
 
-        video_annotater.add_tracker(
-            person_state,
-            detections,
-        )
+    video_annotater.add_tracker(
+        person_state,
+        detections,
+    )
 
     print(
         f"\nTrack {person_state.track_id}: seen in "

@@ -17,35 +17,35 @@ class VideoAnnotator:
     """
 
     def __init__(self, config: Config = Config()):
-        self.person_tracks: list[tuple[PersonState, Detections]] = []
+        self.person_detections: list[tuple[PersonState, Detections]] = []
         self.config = config
 
-    def add_tracker(self, tracker: PersonState, detections: Detections):
+    def add_tracker(self, states: PersonState, detections: Detections):
         """
         Adds a PersonTrack object for VideoAnnotater to include in the video annotations.
 
         Args:
-            tracker: PersonTrack object
+            states: PersonTrack object
             detections: Detections object
         """
 
-        self.person_tracks.append((tracker, detections.expanded()))
+        self.person_detections.append((states, detections.expanded()))
 
     @staticmethod
     def annotate_frame(
-            person_track: PersonState, detections: Detections, frame, frame_idx: int
+            person_state: PersonState, detections: Detections, frame, frame_idx: int
     ):
         """
         Annotates a single frame.
 
         Args:
-            person_track: PersonTrack object
+            person_state: PersonTrack object
             detections: Detections object
             frame: OpenCV frame to be annotated on
             frame_idx: The index in which the frame appears in the video
         """
 
-        box = person_track.boxes[frame_idx]
+        box = person_state.boxes[frame_idx]
 
         if np.isnan(box).any():
             return
@@ -56,7 +56,7 @@ class VideoAnnotator:
 
         cv2.putText(
             frame,
-            f"ID {person_track.track_id}",
+            f"ID {person_state.track_id}",
             (x1, y1 - 10),
             cv2.FONT_HERSHEY_SIMPLEX,
             1,
@@ -119,12 +119,12 @@ class VideoAnnotator:
                 if not success:
                     break
 
-                for track, detections in self.person_tracks:
+                for track, detections in self.person_detections:
                     if frame_idx >= track.frames_processed:
                         continue
 
                     self.annotate_frame(
-                        person_track=track,
+                        person_state=track,
                         detections=detections,
                         frame=frame,
                         frame_idx=frame_idx,
