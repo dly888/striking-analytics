@@ -2,13 +2,13 @@ from __future__ import annotations
 
 import numpy as np
 
-from . import Strike, Side
+from . import Side
 from .config import StrikeConfig
 from .geometry import calculate_angles
 from .tracking import PersonState
 
 
-def get_joint_speed(track: PersonState, name: str, config: StrikeConfig) -> np.ndarray:
+def get_joint_speed(state: PersonState, name: str, config: StrikeConfig) -> np.ndarray:
     """Calculate the speed of a joint in pixels per second.
 
     Missing keypoint detections handled by using the most recent valid
@@ -17,7 +17,7 @@ def get_joint_speed(track: PersonState, name: str, config: StrikeConfig) -> np.n
     accurately return NaN.
 
     Args:
-        track: PersonTrack object
+        state: PersonTrack object
         name: Name of the joint/keypoint
         config: Config object
 
@@ -26,103 +26,172 @@ def get_joint_speed(track: PersonState, name: str, config: StrikeConfig) -> np.n
         Frames where the speed can't be calculated have NaN values.
     """
 
-    xy = track.positions(name)
+    xy = state.positions(name)
+
+    # Assume if x is NaN then y is NaN.
     visible = ~np.isnan(xy[:, 0])
+
+    # Each frames[i] represents the frame index.
     frames = np.arange(len(xy))
 
-    seen_at_or_before = np.maximum.accumulate(np.where(visible, frames, -1))
-    previous = np.roll(seen_at_or_before, 1)
-    previous[0] = -1
+    # For each frame store the most recent valid frame at or before it
+    prefix = np.maximum.accumulate(np.where(visible, frames, -1))
+
+    # Shift by one so that prefix[i] is strictly before frame i
+    prefix = np.roll(prefix, 1)
+    prefix[0] = -1
+
+    previous = prefix
 
     gap = frames - previous
+
     measurable = visible & (previous >= 0) & (gap <= config.max_hold + 1)
 
     speed = np.full(len(xy), np.nan)
-    distance = np.linalg.norm(xy[measurable] - xy[previous[measurable]], axis=1)
-    speed[measurable] = distance * track.fps / gap[measurable]
+
+    distance = np.linalg.norm(
+        xy[measurable] - xy[previous[measurable]],
+        axis=1,
+    )
+
+    speed[measurable] = distance * state.fps / gap[measurable]
 
     return speed
 
-def get_wrist_angular_speed(track: PersonState, side: Side, config: StrikeConfig) -> np.ndarray:
-    """
-    Calculates wrist angular speed relative to corresponding shoulder in degrees per second.
+
+def get_wrist_angular_speed(
+    state: PersonState,
+    side: Side,
+    config: StrikeConfig,
+) -> np.ndarray:
+    """Calculate wrist angular speed relative to the corresponding shoulder.
+
+    Missing keypoint detections are handled by using the most recent valid
+    angle, as long as the number of skipped frames stays under the
+    maximum hold distance. Frames where angular speed can't be calculated
+    accurately return NaN.
 
     Args:
-        track: PersonTrack object
-        side: The side which the wrist is on
-        config: Strike config
+        state: PersonState object.
+        side: The side which the wrist is on.
+        config: StrikeConfig object.
 
     Returns:
-        Numpy array containing current angular speed at each frame
+        Numpy array containing the angular speed for each frame in
+        degrees per second. Frames where the angular speed can't be
+        calculated have NaN values.
     """
-    wrist_xy = track.positions(f"{side}_wrist")
-    shoulder_xy = track.positions(f"{side}_shoulder")
+
+    wrist_xy = state.positions(f"{side}_wrist")
+    shoulder_xy = state.positions(f"{side}_shoulder")
 
     delta = wrist_xy - shoulder_xy
     angle = np.degrees(np.arctan2(delta[:, 1], delta[:, 0]))
 
+    # Assume if the angle is NaN then the wrist/shoulder position is invalid
     visible = ~np.isnan(angle)
+
+    # Each frames[i] represents the frame index.
     frames = np.arange(len(angle))
 
-    seen_at_or_before = np.maximum.accumulate(np.where(visible, frames, -1))
-    previous = np.roll(seen_at_or_before, 1)
-    previous[0] = -1
+    # For each frame store the most recent valid frame at or before it
+    prefix = np.maximum.accumulate(np.where(visible, frames, -1))
+
+    # Shift by one so that prefix[i] is strictly before frame i
+    prefix = np.roll(prefix, 1)
+    prefix[0] = -1
+
+    previous = prefix
+
     gap = frames - previous
+
     measurable = visible & (previous >= 0) & (gap <= config.max_hold + 1)
 
-    # Signed change, wrapped into [-180, 180) to handle the atan2 seam
+    # Signed change, wrapped into [-180, 180)
     d_angle = angle[measurable] - angle[previous[measurable]]
+
     d_angle = (d_angle + 180.0) % 360.0 - 180.0
 
     angular_speed = np.full(len(angle), np.nan)
-    angular_speed[measurable] = np.abs(d_angle) * track.fps / gap[measurable]
+
+    angular_speed[measurable] = np.abs(d_angle) * state.fps / gap[measurable]
 
     return angular_speed
 
-def get_arm_sweep_speed(track: PersonState, side: Side, config: StrikeConfig) -> np.ndarray:
-    """
-    Calculates wrist angular speed relative to shoulder line in degrees per second.
-    Prevents false detections when fighter spins around with arm in air.
+
+def get_arm_sweep_speed(
+    state: PersonState,
+    side: Side,
+    config: StrikeConfig,
+) -> np.ndarray:
+    """Calculate arm sweep speed relative to the shoulder line.
+
+    Missing keypoint detections are handled by using the most recent valid
+    angle, as long as the number of skipped frames stays under the
+    maximum hold distance. Frames where sweep speed can't be calculated
+    accurately return NaN.
+
+    Only inward wrist movement towards the opposite shoulder is measured.
 
     Args:
-        track: PersonTrack object
-        side: The side which the wrist is on
-        config: Strike config
+        state: PersonState object.
+        side: The side which the wrist is on.
+        config: StrikeConfig object.
 
     Returns:
-        Numpy array containing current angular speed at each frame
+        Numpy array containing the arm sweep speed for each frame in
+        degrees per second. Frames where the sweep speed can't be
+        calculated have NaN values.
     """
+
     opposite = "left" if side == "right" else "right"
 
-    b = track.positions(f"{side}_shoulder")     # striking shoulder
-    a = track.positions(f"{opposite}_shoulder") # opposite shoulder
-    c = track.positions(f"{side}_wrist")
+    striking_shoulder = state.positions(f"{side}_shoulder")
+    opposite_shoulder = state.positions(f"{opposite}_shoulder")
+    wrist = state.positions(f"{side}_wrist")
 
-    u = a - b  # shoulder line/vector
-    v = c - b  # arm line/vector
+    # Vector from striking shoulder to opposite shoulder
+    u = opposite_shoulder - striking_shoulder
+
+    # Vector from striking shoulder to wrist
+    v = wrist - striking_shoulder
 
     cross_product = u[:, 0] * v[:, 1] - u[:, 1] * v[:, 0]
-    dot_product = u[:, 0] * v[:, 0] + u[:, 1] * v[:, 1]
-    angle = np.degrees(np.arctan2(cross_product, dot_product))  # signed, (-180, 180], NaN propagates
 
+    dot_product = u[:, 0] * v[:, 0] + u[:, 1] * v[:, 1]
+
+    angle = np.degrees(np.arctan2(cross_product, dot_product))
+
+    # Assume if the angle is NaN then the required keypoints are invalid
     visible = ~np.isnan(angle)
+
+    # Each frames[i] represents the frame index
     frames = np.arange(len(angle))
 
-    seen_at_or_before = np.maximum.accumulate(np.where(visible, frames, -1))
-    previous = np.roll(seen_at_or_before, 1)
-    previous[0] = -1
+    # For each frame store the most recent valid frame at or before it
+    prefix = np.maximum.accumulate(np.where(visible, frames, -1))
+
+    # Shift by one so that prefix[i] is strictly before frame i
+    prefix = np.roll(prefix, 1)
+    prefix[0] = -1
+
+    previous = prefix
 
     gap = frames - previous
+
     measurable = visible & (previous >= 0) & (gap <= config.max_hold + 1)
 
+    # Signed change, wrapped into [-180, 180)
     d_angle = angle[measurable] - angle[previous[measurable]]
-    d_angle = (d_angle + 180.0) % 360.0 - 180.0  # shortest rotation between frames
 
-    # Makes sure to only detect wrist movement inwards(towards the opposite shoulder)
+    d_angle = (d_angle + 180.0) % 360.0 - 180.0
+
+    # Only detect inward wrist movement towards the opposite shoulder
     closing = -np.sign(angle[previous[measurable]]) * d_angle
 
     sweep = np.full(len(angle), np.nan)
-    sweep[measurable] = closing * track.fps / gap[measurable]
+
+    sweep[measurable] = closing * state.fps / gap[measurable]
 
     return sweep
 
@@ -147,7 +216,9 @@ def get_joint_angle(track: PersonState, a: str, b: str, c: str) -> np.ndarray:
     )
 
 
-def get_relative_speed_threshold(speed: np.ndarray, config: StrikeConfig, strike_type: str) -> float:
+def get_relative_speed_threshold(
+    speed: np.ndarray, config: StrikeConfig, strike_type: str
+) -> float:
     """
     Calculates the speed threshold using a top n percentile based on the entire video, set at config.
 
@@ -158,10 +229,12 @@ def get_relative_speed_threshold(speed: np.ndarray, config: StrikeConfig, strike
     Returns:
         The calculated speed threshold. Returns infinity if no valid speed
         values are available.
+        strike_type: The type of strike
     """
     strike_percentile_dict = {
         "straight": config.straight_speed_percentile,
-        "hook": config.hook_angle_speed_percentile
+        "hook": config.hook_angle_speed_percentile,
+        "kick": config.kick_speed_percentile,
     }
 
     if not np.any(~np.isnan(speed)):
@@ -170,7 +243,7 @@ def get_relative_speed_threshold(speed: np.ndarray, config: StrikeConfig, strike
 
 
 def get_pixel_to_meter_ratio(
-        track: PersonState,
+    track: PersonState,
 ) -> np.ndarray:
     """
     Calculates pixel-to-meter conversion ratio for each frame.

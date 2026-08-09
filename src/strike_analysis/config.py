@@ -15,18 +15,23 @@ class Config:
 
 @dataclass(frozen=True)
 class StrikeConfig:
-
     # Straight punches
     straight_angle_threshold: float = 150.0  # Minimum angle to be considered a hook
     straight_speed_percentile: float = 95.0
 
     # Hooks
-    hook_angle_speed_percentile: float = 95.0
+    hook_angle_speed_percentile: float = 95
     hook_elbow_angle_threshold: float = 100  # Maximum angle to be considered a hook
-    hook_wrist_shoulder_line_angle_threshold: float= 120
+    hook_wrist_shoulder_line_angle_threshold: float = 120
 
     # Arm body/ Armpit
-    arm_body_angle_threshold: float = 35.0  # Minimum angle to not be considered an arm swing down
+    arm_body_angle_threshold: float = (
+        35.0  # Minimum angle to not be considered an arm swing down
+    )
+
+    # Kicks
+    angle_between_shins_threshold: float = 90  # Maximum angle
+    kick_speed_percentile: float = 95
 
     # Other
     max_hold: int = 6

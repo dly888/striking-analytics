@@ -7,7 +7,7 @@ from pathlib import Path
 import numpy as np
 
 from .config import Config
-from .tracking import PoseTracker, Person, PersonState
+from .tracking import Person, PersonState, PoseTracker
 
 
 class TrackCache:
@@ -54,7 +54,7 @@ class TrackCache:
             state_meta[key] = {
                 "track_id": state.track_id,
                 "fps": state.fps,
-                "person": asdict(state.person)
+                "person": asdict(state.person),
             }
 
         meta = {

@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from strike_analysis import TrackCache
+
 from .annotator import VideoAnnotator
 from .config import Config, StrikeConfig
 from .detectors import MoveAnalyser
@@ -12,11 +13,11 @@ from .tracking import Person, PoseTracker
 
 
 def main(
-        video_path: Path,
-        person: Person,
-        root: Path,
-        model: str = "yolo26n-pose.pt",
-        config: Config = Config(),
+    video_path: Path,
+    person: Person,
+    root: Path,
+    model: str = "yolo26n-pose.pt",
+    config: Config = Config(),
 ) -> None:
     track_cache = TrackCache()
     output_path = root / "outputs" / "pose_tracker.npz"
@@ -24,11 +25,7 @@ def main(
     if output_path.exists():
         tracker = track_cache.load_pose_tracker(path=output_path)
     else:
-        tracker = PoseTracker(
-            person=person,
-            model_name=model,
-            config=Config()
-        )
+        tracker = PoseTracker(person=person, model_name=model, config=Config())
         tracker.track(video_path=video_path)
         track_cache.save_pose_tracker(pose_tracker=tracker, new_path=output_path)
 
@@ -46,7 +43,7 @@ def main(
 
     detections = MoveAnalyser(
         person_state,
-        config=strike_config,
+        strike_config=strike_config,
     ).get_detections()
 
     video_annotater.add_tracker(
@@ -67,13 +64,15 @@ def main(
     for side in ("left", "right"):
         print(
             f"  {side} wrist stats: "
-            f"{VelocityInspector(
-                get_joint_speed(
-                    person_state,
-                    f"{side}_wrist",
-                    strike_config,
-                )
-            ).get_stats()}"
+            f"{
+                VelocityInspector(
+                    get_joint_speed(
+                        person_state,
+                        f'{side}_wrist',
+                        strike_config,
+                    )
+                ).get_stats()
+            }"
         )
 
     video_annotater.annotate_video(
@@ -86,10 +85,10 @@ if __name__ == "__main__":
     PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
     VIDEO_PATH = (
-            PROJECT_ROOT
-            / "assets"
-            / "clips"
-            / "Joshua Van vs Brandon Royval ｜ FULL FIGHT ｜ UFC 328 [nwO2UPz7p28].webm"
+        PROJECT_ROOT
+        / "assets"
+        / "clips"
+        / "Joshua Van vs Brandon Royval ｜ FULL FIGHT ｜ UFC 328 [nwO2UPz7p28].webm"
     )
 
     royval = Person(
