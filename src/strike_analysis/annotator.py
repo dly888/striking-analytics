@@ -33,7 +33,7 @@ class VideoAnnotator:
 
     @staticmethod
     def annotate_frame(
-            person_state: PersonState, detections: Detections, frame, frame_idx: int
+        person_state: PersonState, detections: Detections, frame, frame_idx: int
     ):
         """
         Annotates a single frame.
@@ -64,33 +64,21 @@ class VideoAnnotator:
             2,
         )
 
-        # for row, strike in enumerate(detections.active_at(frame_idx)):
-        #     cv2.putText(
-        #         frame,
-        #         strike.label,
-        #         (x2, y1 - 20 + row * 35),
-        #         cv2.FONT_HERSHEY_SIMPLEX,
-        #         1,
-        #         (0, 0, 255),
-        #         2,
-        #     )
-
         for row, strike in enumerate(detections.active_at(frame_idx)):
-            if strike.strike_type == "hook" and strike.side == "right":
-                cv2.putText(
-                    frame,
-                    strike.label,
-                    (x2, y1 - 20 + row * 35),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    1,
-                    (0, 0, 255),
-                    2,
-                )
+            cv2.putText(
+                frame,
+                strike.label,
+                (x2, y1 - 20 + row * 35),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                1,
+                (0, 0, 255),
+                2,
+            )
 
     def annotate_video(
-            self,
-            video_path: Path,
-            new_file_path: Path,
+        self,
+        video_path: Path,
+        new_file_path: Path,
     ) -> None:
         """
         Annotates the entire video with: a box around persons tracked, ID label,

@@ -57,8 +57,12 @@ class PoseTracker:
     """
     Tracks a person's pose keypoints and bounding boxes using YOLO pose model.
     """
+
     def __init__(
-            self, person: Person, model_name: str = "yolo26n-pose.pt", config: Config = Config()
+        self,
+        person: Person,
+        model_name: str = "yolo26n-pose.pt",
+        config: Config = Config(),
     ):
         self.person_states: dict[int, PersonState] = {}
         self.model = YOLO(model_name)
@@ -68,22 +72,23 @@ class PoseTracker:
 
     def get_person_state(self, person: Person) -> PersonState:
         """
-        PersonTrack object of Person inputted
+        PersonState object of Person inputted
 
         Args:
             person: The person who's person_track will be returned
 
         Returns:
-            PersonTrack object of the Person inputted.
+            PersonState object of the Person inputted.
         """
         if self.person_states is None:
-            raise ValueError("No persons has been tracked yet. Please run get_person_tracker to track.")
+            raise ValueError(
+                "No persons has been tracked yet. Please run get_person_tracker to track."
+            )
 
-        for _ , person_state in self.person_states.items():
+        for _, person_state in self.person_states.items():
             if person_state.person == person:
                 return person_state
-        else:
-            raise ValueError("Person not tracked.")
+        raise ValueError("Person not tracked.")
 
     def track(self, video_path: Path) -> None:
         """
@@ -128,13 +133,12 @@ class PoseTracker:
             for track_id, frames in detections.items()
         }
 
-
     def _densify(
-            self,
-            track_id: int,
-            frames: dict[int, tuple],
-            frames_processed: int,
-            fps: float,
+        self,
+        track_id: int,
+        frames: dict[int, tuple],
+        frames_processed: int,
+        fps: float,
     ) -> PersonState:
         """
         Converts data tracked from model into PersonTrack object.
@@ -146,7 +150,7 @@ class PoseTracker:
             fps: FPS of the video.
 
         Returns:
-            PersonTrack object.
+            PersonState object.
         """
 
         keypoints = np.full(

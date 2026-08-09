@@ -145,4 +145,6 @@ clip_path = (
     / "Joshua Van vs Brandon Royval ｜ FULL FIGHT ｜ UFC 328 [nwO2UPz7p28].webm"
 )
 
-annotate_video(video_path=clip_path, file_name="../../outputs/test_0001.mp4", model=model)
+annotate_video(
+    video_path=clip_path, file_name="../../outputs/test_0001.mp4", model=model
+)

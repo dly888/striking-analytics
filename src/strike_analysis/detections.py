@@ -13,6 +13,7 @@ class Strike:
     """
     Stores data for each type of strike i.e. left straight, right hook, left roundhouse
     """
+
     strike_type: str
     side: Side
 
@@ -29,6 +30,7 @@ class Detections:
     Uses a boolean mask to identify when a strike occurs, where each index is a frame in teh video.
     Contains a boolean mask for each strike object.
     """
+
     strikes: tuple[Strike, ...]
     mask: np.ndarray
 

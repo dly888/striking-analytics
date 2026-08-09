@@ -17,7 +17,7 @@ class VelocityInspector:
         self.track = track
 
     def get_stats(
-            self, start: int | None = None, end: int | None = None
+        self, start: int | None = None, end: int | None = None
     ) -> dict[str, float]:
         """
         Gets stats about a given time window in the video.
@@ -97,7 +97,7 @@ class VelocityInspector:
         lines = []
         for name in names or ("right_shoulder", "right_elbow", "right_wrist"):
             values = self.track.keypoints[
-                max(0, frame - 1): frame + 1, KEYPOINT_INDEX[name]
+                max(0, frame - 1) : frame + 1, KEYPOINT_INDEX[name]
             ]
             lines.append(f"{name:16s} {np.array2string(values, precision=1)}")
 
