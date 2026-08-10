@@ -2,12 +2,14 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from strike_analysis import TrackCache
+from torch.ao.nn.quantized.functional import threshold
+
+from strike_analysis import TrackCache, get_relative_speed_threshold
 
 from .annotator import VideoAnnotator
 from .config import Config, StrikeConfig
 from .detectors import MoveAnalyser
-from .features import get_joint_speed
+from .features import get_joint_speed, get_joint_speed_peaks
 from .inspector import VelocityInspector
 from .tracking import Person, PoseTracker
 
@@ -16,11 +18,11 @@ def main(
     video_path: Path,
     person: Person,
     root: Path,
+    output_path: Path,
     model: str = "yolo26n-pose.pt",
     config: Config = Config(),
 ) -> None:
     track_cache = TrackCache()
-    output_path = root / "outputs" / "pose_tracker.npz"
 
     if output_path.exists():
         tracker = track_cache.load_pose_tracker(path=output_path)
@@ -51,6 +53,20 @@ def main(
         detections,
     )
 
+
+    for side in ("left", "right"):
+        speed = get_joint_speed(person_state, f"{side}_wrist", strike_config),
+        threshold = get_relative_speed_threshold(speed, strike_config, "straight")
+        print(
+            f"  {side} wrist peaks: "
+            f"{
+                get_joint_speed_peaks(
+                    speed=speed[0],
+                    threshold=threshold
+                )
+            }"
+        )
+
     print(
         f"\nTrack {person_state.track_id}: seen in "
         f"{int(person_state.detected.sum())}/{person_state.frames_processed} frames"
@@ -77,7 +93,7 @@ def main(
 
     video_annotater.annotate_video(
         video_path=video_path,
-        new_file_path=root / "outputs" / "annotate_test_0003.mp4",
+        new_file_path=root / "outputs" / "annotate_test_0004.mp4",
     )
 
 
@@ -88,20 +104,23 @@ if __name__ == "__main__":
         PROJECT_ROOT
         / "assets"
         / "clips"
-        / "Joshua Van vs Brandon Royval ｜ FULL FIGHT ｜ UFC 328 [nwO2UPz7p28].webm"
+        / "Full MMA Shadow Boxing With Sabaki by Giga Chikadze [IEu0SAWLiXw].mp4"
     )
 
-    royval = Person(
-        name="Brandon Royval",
-        height_m=1.75,
-        weight=57,
-        wingspan_m=1.73,
-        stance="left",
+    OUTPUT_PATH = PROJECT_ROOT / "outputs" / "giga.npz"
+
+    fighter = Person(
+        name="Giga Chikadze",
+        height_m=1.83,
+        weight=66,
+        wingspan_m=1.88,
+        stance="right",
     )
 
     main(
         video_path=VIDEO_PATH,
-        person=royval,
+        person=fighter,
         root=PROJECT_ROOT,
+        output_path=OUTPUT_PATH,
         model=str(PROJECT_ROOT / "models" / "yolo26n-pose.pt"),
     )

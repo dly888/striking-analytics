@@ -30,7 +30,7 @@ class StrikeConfig:
     )
 
     # Kicks
-    angle_between_shins_threshold: float = 90  # Maximum angle
+    angle_between_shins_threshold: float = 90  # Minimum angle
     kick_speed_percentile: float = 95
 
     # Other
