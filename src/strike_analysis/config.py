@@ -8,9 +8,9 @@ class Config:
     """Configuration parameters controlling detection thresholds and tracking behaviour."""
 
     keypoint_conf: float = 0.4
-    velocity_percentile: float = 95.0
     max_hold: int = 6
     min_punch_frames: int = 1
+    keypoint_smoothing_window: int = 3
 
 
 @dataclass(frozen=True)

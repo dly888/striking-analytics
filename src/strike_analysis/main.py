@@ -122,5 +122,5 @@ if __name__ == "__main__":
         person=fighter,
         root=PROJECT_ROOT,
         output_path=OUTPUT_PATH,
-        model=str(PROJECT_ROOT / "models" / "yolo26n-pose.pt"),
+        model=str(PROJECT_ROOT / "models" / "yolo26s-pose.pt"),
     )

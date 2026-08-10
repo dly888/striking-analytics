@@ -11,6 +11,63 @@ from .config import Config
 from .constants import KEYPOINT_INDEX, N_KEYPOINTS, Side
 from .video import get_fps
 
+def smooth_keypoints(
+    keypoints: np.ndarray,
+    window: int,
+) -> np.ndarray:
+    """
+    Smooth keypoints positions over time
+
+    Args:
+        keypoints: Keypoints to be smoothed
+        window: Size of the window where keypoints will be smoothed
+
+    Returns:
+        Numpy array of the smoothed keypoints
+    """
+    if window <= 1:
+        return keypoints
+
+    if window % 2 == 0:
+        raise ValueError("Smoothing window must be odd.")
+
+    smoothed = keypoints.copy()
+    kernel = np.ones(window, dtype=float)
+
+    for keypoint_idx in range(keypoints.shape[1]):
+        for axis in range(2):  # x and y only
+            values = keypoints[:, keypoint_idx, axis]
+            visible = np.isfinite(values)
+
+            # Replace NaNs with zero
+            values_filled = np.where(visible, values, 0.0)
+
+            # Sum of valid values in each window
+            num = np.convolve(
+                values_filled,
+                kernel,
+                mode="same",
+            )
+
+            # Number of valid values in each window
+            den = np.convolve(
+                visible.astype(float),
+                kernel,
+                mode="same",
+            )
+
+            result = np.full_like(values, np.nan, dtype=float)
+
+            valid = den > 0
+            result[valid] = num[valid] / den[valid]
+
+            # Dont fill originally missing observations.
+            result[~visible] = np.nan
+
+            smoothed[:, keypoint_idx, axis] = result
+
+    return smoothed
+
 
 @dataclass(frozen=True)
 class Person:
@@ -61,7 +118,7 @@ class PoseTracker:
     def __init__(
         self,
         person: Person,
-        model_name: str = "yolo26n-pose.pt",
+        model_name: str = "yolo26s-pose.pt",
         config: Config = Config(),
     ):
         self.person_states: dict[int, PersonState] = {}
@@ -156,6 +213,12 @@ class PoseTracker:
         keypoints = np.full(
             (frames_processed, N_KEYPOINTS, 3), np.nan, dtype=np.float32
         )
+
+        keypoints = smooth_keypoints(
+            keypoints,
+            window=self.config.keypoint_smoothing_window,
+        )
+
         boxes = np.full((frames_processed, 4), np.nan, dtype=np.float32)
         box_conf = np.full(frames_processed, np.nan, dtype=np.float32)
 
