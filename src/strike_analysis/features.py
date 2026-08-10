@@ -226,32 +226,6 @@ def get_joint_angle(track: PersonState, a: str, b: str, c: str) -> np.ndarray:
     )
 
 
-def get_relative_speed_threshold(
-    speed: np.ndarray, config: StrikeConfig, strike_type: str
-) -> float:
-    """
-    Calculates the speed threshold using a top n percentile based on the entire video, set at config.
-
-    Args:
-        speed: Numpy array containing speeds for each frame.
-        config: Config object
-
-    Returns:
-        The calculated speed threshold. Returns infinity if no valid speed
-        values are available.
-        strike_type: The type of strike
-    """
-    strike_percentile_dict = {
-        "straight": config.straight_speed_percentile,
-        "hook": config.hook_angle_speed_percentile,
-        "kick": config.kick_speed_percentile,
-    }
-
-    if not np.any(~np.isnan(speed)):
-        return np.inf
-    return float(np.nanpercentile(speed, strike_percentile_dict[strike_type]))
-
-
 def get_pixel_to_meter_ratio(
     track: PersonState,
 ) -> np.ndarray:
@@ -275,6 +249,11 @@ def get_pixel_to_meter_ratio(
         axis=1,
     )
 
+    # Shoulder width in pixels collapses when the person turns side on,
+    # so floor it at half the video median to stop the ratio exploding
+    shoulder_floor = np.nanmedian(shoulder_pixels) * 0.5
+    shoulder_pixels = np.maximum(shoulder_pixels, shoulder_floor)
+
     wingspan_m = track.person.wingspan_m
     shoulder_width_m = wingspan_m * 0.25
     ratio = shoulder_width_m / shoulder_pixels
@@ -282,16 +261,17 @@ def get_pixel_to_meter_ratio(
     return ratio
 
 
-def get_punch_speed_threshold(track: PersonState):
+def get_speed_threshold(track: PersonState, speed_mps: float) -> np.ndarray:
     """
-    Calculates punch speed threshold based on fixed real life value.
+    Calculates a speed threshold based on a fixed real life speed.
 
     Args:
         track: PersonTrack object
+        speed_mps: Speed threshold in meters per second, set at config.
 
     Returns:
         Numpy array containing the threshold at each frame in pixels per second.
     """
     pixel_to_m_ratio = get_pixel_to_meter_ratio(track)
-    thresholds = 5 / pixel_to_m_ratio
+    thresholds = speed_mps / pixel_to_m_ratio
     return thresholds

@@ -8,8 +8,7 @@ from .features import (
     get_arm_sweep_speed,
     get_joint_angle,
     get_joint_speed,
-    get_punch_speed_threshold,
-    get_relative_speed_threshold, get_joint_speed_peaks,
+    get_speed_threshold, get_joint_speed_peaks,
 )
 from .tracking import PersonState
 
@@ -30,10 +29,9 @@ def detect_straight(
         each frame.
     """
     side = strike.side
-    strike_type = strike.strike_type
 
     speed = get_joint_speed(state, f"{side}_wrist", strike_config)
-    thresholds = get_relative_speed_threshold(speed, strike_config, strike_type)
+    thresholds = get_speed_threshold(state, strike_config.straight_speed_mps)
 
     peaks = get_joint_speed_peaks(speed, thresholds)
     detections = np.full(shape=len(speed), fill_value=False)
@@ -81,38 +79,33 @@ def detect_hook(
     """
     side = strike.side
     opposite = "left" if side == "right" else "right"
-    strike_type = strike.strike_type
 
     arm_sweep_speed = get_arm_sweep_speed(state, side, strike_strike_config)
-    arm_sweep_threshold = get_relative_speed_threshold(
-        arm_sweep_speed, strike_strike_config, strike_type
-    )
+    # Sweep speed is angular so the threshold is already scale invariant
+    arm_sweep_threshold = strike_strike_config.hook_sweep_speed_threshold
     arm_sweep_speed_peaks = get_joint_speed_peaks(arm_sweep_speed, arm_sweep_threshold)
 
     wrist_speed = get_joint_speed(state, f"{side}_wrist", strike_strike_config)
-    wrist_speed_threshold = get_relative_speed_threshold(
-        wrist_speed, strike_strike_config, "straight"  # Use straight as the strike type here
+    wrist_speed_threshold = get_speed_threshold(
+        state, strike_strike_config.straight_speed_mps  # Use the straight speed here
     )
-    wrist_speed_peaks = get_joint_speed_peaks(wrist_speed, wrist_speed_threshold)
 
-    # Threshold is a minimum
     arm_lifted = (
             get_joint_angle(state, f"{side}_hip", f"{side}_shoulder", f"{side}_elbow")
             > strike_strike_config.arm_body_angle_threshold
     )
 
-    # Threshold is a maximum
     arm_bent = (
             get_joint_angle(state, f"{side}_shoulder", f"{side}_elbow", f"{side}_wrist")
-            < strike_strike_config.hook_elbow_angle_threshold
+            < strike_strike_config.hook_elbow_angle_threshold  # Threshold is a maximum
     )
 
-    # Threshold is a maximum
+    # Checks if the wrist is inward enough
     shoulder_rotated = (
             get_joint_angle(
                 state, f"{opposite}_shoulder", f"{side}_shoulder", f"{side}_wrist"
             )
-            < strike_strike_config.hook_wrist_shoulder_line_angle_threshold
+            < strike_strike_config.hook_wrist_shoulder_line_angle_threshold  # Threshold is a maximum
     )
 
     detections = np.full(len(wrist_speed), fill_value=False)
@@ -124,7 +117,7 @@ def detect_hook(
         )
 
         if np.any(arm_lifted[window] & arm_bent[window] & shoulder_rotated[window] & (
-                wrist_speed[window] > wrist_speed_threshold)):
+                wrist_speed[window] > wrist_speed_threshold[window])):
             detections[peak] = True
 
     return detections
@@ -136,20 +129,20 @@ def detect_kick(
     side = strike.side
     opposite = "left" if side == "right" else "right"
 
+    # Pivot side features
     pivot_foot_xy = state.positions(f"{opposite}_ankle")
     pivot_knee_xy = state.positions(f"{opposite}_knee")
     pivot_shin_vector = pivot_foot_xy - pivot_knee_xy
+    pivot_foot_speed = get_joint_speed(state, f"{opposite}_ankle", strike_config)
 
+    # Strike side features
     strike_foot_xy = state.positions(f"{side}_ankle")
     strike_knee_xy = state.positions(f"{side}_knee")
     strike_shin_vector = strike_foot_xy - strike_knee_xy
-
     strike_foot_speed = get_joint_speed(state, f"{side}_ankle", strike_config)
-
-    strike_foot_speed_threshold = get_relative_speed_threshold(
-        strike_foot_speed, strike_config, "kick"
+    strike_foot_speed_threshold = get_speed_threshold(
+        state, strike_config.kick_speed_mps
     )
-
     strike_foot_speed_peaks = get_joint_speed_peaks(strike_foot_speed, strike_foot_speed_threshold)
 
     # Angle between shins
@@ -167,8 +160,11 @@ def detect_kick(
             min(len(strike_foot_speed), peak + 11),
         )
 
-        if np.any(angle_between_shins[window] > strike_config.angle_between_shins_threshold):
-           detections[peak] = True
+        if np.any(
+                (angle_between_shins[window] > strike_config.angle_between_shins_threshold)
+                & (strike_foot_speed[peak] > pivot_foot_speed[peak])):
+
+            detections[peak] = True
 
     return detections
 
@@ -182,7 +178,7 @@ class MoveAnalyser:
     ):
         self.track = track
         self.strike_config = strike_config
-        self.thresholds = get_punch_speed_threshold(track)
+        self.thresholds = get_speed_threshold(track, strike_config.straight_speed_mps)
 
     def get_detections(self) -> Detections:
         """

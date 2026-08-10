@@ -8,8 +8,7 @@ from .features import (
     get_joint_angle,
     get_joint_speed,
     get_pixel_to_meter_ratio,
-    get_punch_speed_threshold,
-    get_relative_speed_threshold,
+    get_speed_threshold,
 )
 from .geometry import calculate_angles, count_segments, longest_nan_run, segment_bounds
 from .inspector import VelocityInspector
@@ -41,8 +40,7 @@ __all__ = [
     "get_joint_angle",
     "get_joint_speed",
     "get_pixel_to_meter_ratio",
-    "get_punch_speed_threshold",
-    "get_relative_speed_threshold",
+    "get_speed_threshold",
     "longest_nan_run",
     "open_video",
     "segment_bounds",

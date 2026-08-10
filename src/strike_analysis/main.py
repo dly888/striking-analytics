@@ -4,7 +4,7 @@ from pathlib import Path
 
 from torch.ao.nn.quantized.functional import threshold
 
-from strike_analysis import TrackCache, get_relative_speed_threshold
+from strike_analysis import TrackCache, get_speed_threshold
 
 from .annotator import VideoAnnotator
 from .config import Config, StrikeConfig
@@ -56,7 +56,7 @@ def main(
 
     for side in ("left", "right"):
         speed = get_joint_speed(person_state, f"{side}_wrist", strike_config),
-        threshold = get_relative_speed_threshold(speed, strike_config, "straight")
+        threshold = get_speed_threshold(person_state, strike_config.straight_speed_mps)
         print(
             f"  {side} wrist peaks: "
             f"{
