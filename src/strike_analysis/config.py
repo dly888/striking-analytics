@@ -16,7 +16,7 @@ class Config:
 @dataclass(frozen=True)
 class StrikeConfig:
     # Straight punches
-    straight_angle_threshold: float = 150.0  # Minimum angle to be considered a hook
+    straight_angle_threshold: float = 150.0  # Minimum angle to be considered a straight
     straight_speed_percentile: float = 95.0
 
     # Hooks
@@ -26,7 +26,7 @@ class StrikeConfig:
 
     # Arm body/ Armpit
     arm_body_angle_threshold: float = (
-        35.0  # Minimum angle to not be considered an arm swing down
+        65.0  # Minimum angle to not be considered an arm swing down
     )
 
     # Kicks

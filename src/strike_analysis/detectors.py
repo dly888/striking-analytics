@@ -9,19 +9,19 @@ from .features import (
     get_joint_angle,
     get_joint_speed,
     get_punch_speed_threshold,
-    get_relative_speed_threshold,
+    get_relative_speed_threshold, get_joint_speed_peaks,
 )
 from .tracking import PersonState
 
 
 def detect_straight(
-    track: PersonState, strike: Strike, strike_config: StrikeConfig
+    state: PersonState, strike: Strike, strike_config: StrikeConfig
 ) -> np.ndarray:
     """
     Detects when a straight punch occurs.
 
     Args:
-        track: PersonState object
+        state: PersonState object
         strike: Strike object to be detected
         strike_config: Config object
 
@@ -32,20 +32,32 @@ def detect_straight(
     side = strike.side
     strike_type = strike.strike_type
 
-    speed = get_joint_speed(track, f"{side}_wrist", strike_config)
+    speed = get_joint_speed(state, f"{side}_wrist", strike_config)
     thresholds = get_relative_speed_threshold(speed, strike_config, strike_type)
 
+    peaks = get_joint_speed_peaks(speed, thresholds)
+    detections = np.full(shape=len(speed), fill_value=False)
+
     arm_lifted = (
-        get_joint_angle(track, f"{side}_hip", f"{side}_shoulder", f"{side}_elbow")
+        get_joint_angle(state, f"{side}_hip", f"{side}_shoulder", f"{side}_elbow")
         > strike_config.arm_body_angle_threshold
     )
 
     arm_extended = (
-        get_joint_angle(track, f"{side}_shoulder", f"{side}_elbow", f"{side}_wrist")
+        get_joint_angle(state, f"{side}_shoulder", f"{side}_elbow", f"{side}_wrist")
         > strike_config.straight_angle_threshold
     )
-    return arm_extended & arm_lifted & (speed > thresholds)
 
+    for peak in peaks:
+        window = slice(
+            max(0, peak - 10),
+            min(len(speed), peak + 11),
+        )
+
+        if np.any(arm_lifted[window] & arm_extended[window]):
+            detections[peak] = True
+
+    return detections
 
 def detect_hook(
     state: PersonState, strike: Strike, strike_strike_config: StrikeConfig

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import numpy as np
+from scipy.signal import find_peaks
 
 from . import Side
 from .config import StrikeConfig
@@ -57,6 +58,15 @@ def get_joint_speed(state: PersonState, name: str, config: StrikeConfig) -> np.n
     speed[measurable] = distance * state.fps / gap[measurable]
 
     return speed
+
+def get_joint_speed_peaks(speed, threshold):
+    peaks, properties = find_peaks(
+        speed,
+        height=threshold,
+        distance=10
+    )
+
+    return peaks
 
 
 def get_wrist_angular_speed(
