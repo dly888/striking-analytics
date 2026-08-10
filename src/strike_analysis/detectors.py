@@ -7,7 +7,9 @@ from .detections import Detections, Strike
 from .features import (
     get_arm_sweep_speed,
     get_joint_angle,
+    get_joint_rise_speed,
     get_joint_speed,
+    get_pixel_to_meter_ratio,
     get_speed_threshold, get_joint_speed_peaks,
 )
 from .tracking import PersonState
@@ -31,9 +33,10 @@ def detect_straight(
     side = strike.side
 
     speed = get_joint_speed(state, f"{side}_wrist", strike_config)
-    thresholds = get_speed_threshold(state, strike_config.straight_speed_mps)
+    thresholds = get_speed_threshold(state, strike_config.min_straight_speed_mps)
+    max_thresholds = get_speed_threshold(state, strike_config.max_straight_speed_mps)
 
-    peaks = get_joint_speed_peaks(speed, thresholds)
+    peaks = get_joint_speed_peaks(speed, thresholds, max_thresholds)
     detections = np.full(shape=len(speed), fill_value=False)
 
     arm_lifted = (
@@ -81,13 +84,16 @@ def detect_hook(
     opposite = "left" if side == "right" else "right"
 
     arm_sweep_speed = get_arm_sweep_speed(state, side, strike_strike_config)
-    # Sweep speed is angular so the threshold is already scale invariant
     arm_sweep_threshold = strike_strike_config.hook_sweep_speed_threshold
-    arm_sweep_speed_peaks = get_joint_speed_peaks(arm_sweep_speed, arm_sweep_threshold)
+    arm_sweep_speed_peaks = get_joint_speed_peaks(
+        arm_sweep_speed,
+        arm_sweep_threshold,
+        strike_strike_config.max_hook_sweep_speed,
+    )
 
     wrist_speed = get_joint_speed(state, f"{side}_wrist", strike_strike_config)
     wrist_speed_threshold = get_speed_threshold(
-        state, strike_strike_config.straight_speed_mps  # Use the straight speed here
+        state, strike_strike_config.min_straight_speed_mps  # Use the straight speed here
     )
 
     arm_lifted = (
@@ -123,6 +129,86 @@ def detect_hook(
     return detections
 
 
+def detect_uppercut(
+        state: PersonState, strike: Strike, strike_config: StrikeConfig
+) -> np.ndarray:
+    """
+    Detects whether an uppercut occurs.
+
+    Use three conditions:
+        - The upward wrist speed is fast enough
+        - The wrist travels far enough upward, a guard bounce only rises a
+          few centimeters while an uppercut carries the fist to the chin
+        - Arm stays tucked with the elbow bent tighter than a hook
+
+    Args:
+        state: PersonState object to detect from
+        strike: Information on the strike
+        strike_config: Strike config values
+
+    Returns:
+        Numpy array which contains whether an uppercut is detected at each frame
+    """
+    side = strike.side
+
+    # Peaks found on upward speed
+    wrist_rise_speed = get_joint_rise_speed(state, f"{side}_wrist", strike_config)
+    wrist_rise_speed_threshold = get_speed_threshold(
+        state, strike_config.min_uppercut_speed_mps
+    )
+    wrist_rise_speed_max_threshold = get_speed_threshold(
+        state, strike_config.max_uppercut_speed_mps
+    )
+    wrist_rise_speed_peaks = get_joint_speed_peaks(
+        wrist_rise_speed,
+        wrist_rise_speed_threshold,
+        wrist_rise_speed_max_threshold,
+    )
+
+    arm_tucked = (
+            get_joint_angle(state, f"{side}_hip", f"{side}_shoulder", f"{side}_elbow")
+            < strike_config.uppercut_arm_body_angle_threshold  # Threshold is a maximum
+    )
+
+    arm_bent = (
+            get_joint_angle(state, f"{side}_shoulder", f"{side}_elbow", f"{side}_wrist")
+            < strike_config.uppercut_elbow_angle_threshold  # Threshold is a maximum
+    )
+
+    # A hand returning to guard after a punch also rises fast with a bent
+    # arm, but it is preceded by an extended arm while an uppercut starts
+    # from a compact guard
+    arm_extended = (
+            get_joint_angle(state, f"{side}_shoulder", f"{side}_elbow", f"{side}_wrist")
+            > strike_config.straight_angle_threshold
+    )
+
+    wrist_y = state.positions(f"{side}_wrist")[:, 1]
+    pixel_to_m_ratio = get_pixel_to_meter_ratio(state)
+
+    detections = np.full(len(wrist_rise_speed), fill_value=False)
+
+    for peak in wrist_rise_speed_peaks:
+        before = slice(max(0, peak - 10), peak + 1)
+        after = slice(peak, min(len(wrist_y), peak + 11))
+
+        # Net upward travel from the lowest point before the peak to the
+        # highest point after it, y decreases upward
+        start_y = np.nanmax(wrist_y[before])
+        end_y = np.nanmin(wrist_y[after])
+        rise_m = (start_y - end_y) * pixel_to_m_ratio[peak]
+
+        if (
+                rise_m >= strike_config.min_uppercut_rise_m
+                and arm_tucked[peak]
+                and arm_bent[peak]
+                and not np.any(arm_extended[before])
+        ):
+            detections[peak] = True
+
+    return detections
+
+
 def detect_kick(
         state: PersonState, strike: Strike, strike_config: StrikeConfig
 ) -> np.ndarray:
@@ -141,9 +227,16 @@ def detect_kick(
     strike_shin_vector = strike_foot_xy - strike_knee_xy
     strike_foot_speed = get_joint_speed(state, f"{side}_ankle", strike_config)
     strike_foot_speed_threshold = get_speed_threshold(
-        state, strike_config.kick_speed_mps
+        state, strike_config.min_kick_speed
     )
-    strike_foot_speed_peaks = get_joint_speed_peaks(strike_foot_speed, strike_foot_speed_threshold)
+    strike_foot_speed_max_threshold = get_speed_threshold(
+        state, strike_config.max_kick_speed
+    )
+    strike_foot_speed_peaks = get_joint_speed_peaks(
+        strike_foot_speed,
+        strike_foot_speed_threshold,
+        strike_foot_speed_max_threshold,
+    )
 
     # Angle between shins
     dot = np.sum(strike_shin_vector * pivot_shin_vector, axis=1)
@@ -151,6 +244,13 @@ def detect_kick(
         pivot_shin_vector, axis=1
     )
     angle_between_shins = np.degrees(np.arccos(np.clip(dot / norms, -1.0, 1.0)))
+
+    # Height of the kicking ankle above the pivot ankle in meters.
+    # Differentiates between a kick and footwork
+    pixel_to_m_ratio = get_pixel_to_meter_ratio(state)
+    ankle_raise = (pivot_foot_xy[:, 1] - strike_foot_xy[:, 1]) * pixel_to_m_ratio
+
+    foot_lifted = ankle_raise > strike_config.min_kick_ankle_raise_m
 
     detections = np.full(len(strike_foot_speed), fill_value=False)
 
@@ -162,14 +262,20 @@ def detect_kick(
 
         if np.any(
                 (angle_between_shins[window] > strike_config.angle_between_shins_threshold)
-                & (strike_foot_speed[peak] > pivot_foot_speed[peak])):
+                & (strike_foot_speed[peak] > pivot_foot_speed[peak])) and np.any(
+                foot_lifted[window]):
 
             detections[peak] = True
 
     return detections
 
 
-DETECTORS = {"straight": detect_straight, "hook": detect_hook, "kick": detect_kick}
+DETECTORS = {
+    "straight": detect_straight,
+    "hook": detect_hook,
+    "uppercut": detect_uppercut,
+    "kick": detect_kick,
+}
 
 
 class MoveAnalyser:
@@ -178,7 +284,7 @@ class MoveAnalyser:
     ):
         self.track = track
         self.strike_config = strike_config
-        self.thresholds = get_speed_threshold(track, strike_config.straight_speed_mps)
+        self.thresholds = get_speed_threshold(track, strike_config.min_straight_speed_mps)
 
     def get_detections(self) -> Detections:
         """

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import numpy as np
+from numpy import ndarray
 from scipy.signal import find_peaks
 
 from . import Side
@@ -59,14 +60,68 @@ def get_joint_speed(state: PersonState, name: str, config: StrikeConfig) -> np.n
 
     return speed
 
-def get_joint_speed_peaks(speed, threshold):
+def get_joint_speed_peaks(speed: np.ndarray, threshold: np.ndarray, max_speed: np.ndarray) -> ndarray:
     peaks, properties = find_peaks(
         speed,
         height=threshold,
-        distance=10
+        distance=10,
     )
 
-    return peaks
+    # Filter out glitch spikes
+    valid = properties["peak_heights"] <= (
+        max_speed[peaks] if np.ndim(max_speed) else max_speed
+    )
+
+    return peaks[valid]
+
+
+def get_joint_rise_speed(state: PersonState, name: str, config: StrikeConfig) -> np.ndarray:
+    """Calculate the upward speed of a joint in pixels per second.
+
+    Upward movement is positive since image y grows downward. Missing
+    keypoint detections handled by using the most recent valid position,
+    as long as the number of skipped frames stays under the maximum hold
+    distance. Frames where speed can't be calculated accurately return NaN.
+
+    Args:
+        state: PersonTrack object
+        name: Name of the joint/keypoint
+        config: Config object
+
+    Returns:
+        Numpy array containing the upward joint speed for each frame.
+        Frames where the speed can't be calculated have NaN values.
+    """
+
+    xy = state.positions(name)
+
+    # Assume if x is NaN then y is NaN.
+    visible = ~np.isnan(xy[:, 0])
+
+    # Each frames[i] represents the frame index.
+    frames = np.arange(len(xy))
+
+    # For each frame store the most recent valid frame at or before it
+    prefix = np.maximum.accumulate(np.where(visible, frames, -1))
+
+    # Shift by one so that prefix[i] is strictly before frame i
+    prefix = np.roll(prefix, 1)
+    prefix[0] = -1
+
+    previous = prefix
+
+    gap = frames - previous
+
+    measurable = visible & (previous >= 0) & (gap <= config.max_hold + 1)
+
+    rise_speed = np.full(len(xy), np.nan)
+
+    # Upward movement decreases y, so previous minus current is positive
+    rise = xy[previous[measurable], 1] - xy[measurable, 1]
+
+    rise_speed[measurable] = rise * state.fps / gap[measurable]
+
+    return rise_speed
 
 
 def get_wrist_angular_speed(
@@ -232,8 +287,8 @@ def get_pixel_to_meter_ratio(
     """
     Calculates pixel-to-meter conversion ratio for each frame.
 
-    Conversion estimated using the user's wingspan to approximate shoulder
-    width in real-world units.
+    Conversion estimated using user's height to approximate torso
+    length .
 
     Args:
         track: PersonTrack object
@@ -241,22 +296,24 @@ def get_pixel_to_meter_ratio(
     Returns:
         Numpy array containing the pixel to meter ratio for each frame.
     """
-    left_shoulder = track.positions("left_shoulder")
-    right_shoulder = track.positions("right_shoulder")
+    shoulder_centre = (
+        track.positions("left_shoulder") + track.positions("right_shoulder")
+    ) / 2
+    hip_centre = (track.positions("left_hip") + track.positions("right_hip")) / 2
 
-    shoulder_pixels = np.linalg.norm(
-        right_shoulder - left_shoulder,
+    torso_pixels = np.linalg.norm(
+        shoulder_centre - hip_centre,
         axis=1,
     )
 
-    # Shoulder width in pixels collapses when the person turns side on,
+    # Torso length in pixels shrinks when the person crouches or bends over,
     # so floor it at half the video median to stop the ratio exploding
-    shoulder_floor = np.nanmedian(shoulder_pixels) * 0.5
-    shoulder_pixels = np.maximum(shoulder_pixels, shoulder_floor)
+    torso_floor = np.nanmedian(torso_pixels) * 0.5
+    torso_pixels = np.maximum(torso_pixels, torso_floor)
 
-    wingspan_m = track.person.wingspan_m
-    shoulder_width_m = wingspan_m * 0.25
-    ratio = shoulder_width_m / shoulder_pixels
+    height_m = track.person.height_m
+    torso_length_m = height_m * 0.3
+    ratio = torso_length_m / torso_pixels
 
     return ratio
 
@@ -271,6 +328,7 @@ def get_speed_threshold(track: PersonState, speed_mps: float) -> np.ndarray:
 
     Returns:
         Numpy array containing the threshold at each frame in pixels per second.
+        :rtype: np.ndarray
     """
     pixel_to_m_ratio = get_pixel_to_meter_ratio(track)
     thresholds = speed_mps / pixel_to_m_ratio

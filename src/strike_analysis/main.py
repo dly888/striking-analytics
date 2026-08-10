@@ -56,13 +56,15 @@ def main(
 
     for side in ("left", "right"):
         speed = get_joint_speed(person_state, f"{side}_wrist", strike_config),
-        threshold = get_speed_threshold(person_state, strike_config.straight_speed_mps)
+        current_threshold = get_speed_threshold(person_state, strike_config.min_straight_speed_mps)
+        max_threshold = get_speed_threshold(person_state, strike_config.max_straight_speed_mps)
         print(
             f"  {side} wrist peaks: "
             f"{
                 get_joint_speed_peaks(
                     speed=speed[0],
-                    threshold=threshold
+                    threshold=current_threshold,
+                    max_speed=max_threshold
                 )
             }"
         )
