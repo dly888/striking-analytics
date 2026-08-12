@@ -55,6 +55,7 @@ class VideoAnnotator:
 
         cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
 
+        # Output person id
         cv2.putText(
             frame,
             f"ID {person_state.track_id}",
@@ -65,6 +66,19 @@ class VideoAnnotator:
             2,
         )
 
+        # Output the current frame
+        cv2.putText(
+            frame,
+            f"Frame: {frame_idx}",
+            (50, 50),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            1,
+            (0, 255, 0),
+            2,
+        )
+
+
+        # Output name of strike detected
         for row, strike in enumerate(detections.active_at(frame_idx)):
             cv2.putText(
                 frame,
