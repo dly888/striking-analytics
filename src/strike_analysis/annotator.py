@@ -6,6 +6,7 @@ import cv2
 import numpy as np
 
 from .config import Config
+from .constants import SKELETON_EDGES
 from .detections import Detections
 from .tracking import PersonState
 from .video import get_fps, open_video
@@ -74,6 +75,42 @@ class VideoAnnotator:
                 (0, 0, 255),
                 2,
             )
+
+        VideoAnnotator.draw_skeleton(person_state, frame, frame_idx)
+
+    @staticmethod
+    def draw_skeleton(person_state: PersonState, frame, frame_idx: int):
+        """
+        Draws the keypoint skeleton on a single frame.
+
+        Args:
+            person_state: PersonTrack object
+            frame: OpenCV frame to be annotated on
+            frame_idx: The index in which the frame appears in the video
+        """
+
+        for a, b in SKELETON_EDGES:
+            point_a = person_state.positions(a)[frame_idx]
+            point_b = person_state.positions(b)[frame_idx]
+
+            if np.isnan(point_a).any() or np.isnan(point_b).any():
+                continue
+
+            cv2.line(
+                frame,
+                tuple(point_a.astype(int)),
+                tuple(point_b.astype(int)),
+                (0, 200, 255),
+                2,
+            )
+
+        for name in ("left_wrist", "right_wrist", "left_ankle", "right_ankle"):
+            point = person_state.positions(name)[frame_idx]
+
+            if np.isnan(point).any():
+                continue
+
+            cv2.circle(frame, tuple(point.astype(int)), 4, (0, 200, 255), -1)
 
     def annotate_video(
         self,

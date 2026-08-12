@@ -61,6 +61,14 @@ def get_joint_speed(state: PersonState, name: str, config: StrikeConfig) -> np.n
     return speed
 
 def get_joint_speed_peaks(speed: np.ndarray, threshold: np.ndarray, max_speed: np.ndarray) -> ndarray:
+    """
+    Gets the peak values of the joint speeds tracked.
+
+    Args:
+        speed: Speed of the joint at each frame
+        threshold: Threshold to be considered a peak at each frame
+        max_speed: Maximum speed at which a detection will be considered a glitch
+    """
     peaks, properties = find_peaks(
         speed,
         height=threshold,

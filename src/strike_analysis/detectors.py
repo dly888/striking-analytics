@@ -212,6 +212,25 @@ def detect_uppercut(
 def detect_kick(
         state: PersonState, strike: Strike, strike_config: StrikeConfig
 ) -> np.ndarray:
+    """
+    Detects whether a kick occurs.
+
+    Use three conditions:
+        - The angle between the shins is wide enough and the striking foot
+          is faster than the pivot foot
+        - The striking foot speed is fast enough
+        - The striking ankle lifts high enough above the pivot ankle, a kick
+          lifts the foot off the ground while footwork keeps both feet near
+          ground level
+
+    Args:
+        state: PersonState object to detect from
+        strike: Information on the strike
+        strike_config: Strike config values
+
+    Returns:
+        Numpy array which contains whether a kick is detected at each frame
+    """
     side = strike.side
     opposite = "left" if side == "right" else "right"
 
@@ -304,4 +323,17 @@ class MoveAnalyser:
                 for strike in strikes
             ]
         ).astype(bool)
+
+        # If both a hook and straight hare detected, the straight will take priority
+        for side in ("left", "right"):
+            straight_row = mask[strikes.index(Strike("straight", side))]
+            hook_row = mask[strikes.index(Strike("hook", side))]
+
+            for frame in np.flatnonzero(straight_row):
+                window = slice(
+                    max(0, frame - 10),
+                    min(len(hook_row), frame + 11),
+                )
+                hook_row[window] = False
+
         return Detections(strikes, mask)
