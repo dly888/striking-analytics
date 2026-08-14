@@ -5,7 +5,7 @@ import numpy as np
 
 from strike_analysis import StrikeConfig, calculate_angles, get_joint_speed, get_pixel_to_meter_ratio, get_speed_threshold
 from strike_analysis.constants import KEYPOINT_INDEX
-from strike_analysis.features import get_joint_rise_speed, get_joint_speed_peaks
+from strike_analysis.features import get_arm_sweep_speed, get_joint_rise_speed, get_joint_speed_peaks
 
 
 @pytest.fixture()
@@ -165,6 +165,57 @@ def test_get_joint_speed_peaks_array_max():
     peaks = get_joint_speed_peaks(speed, threshold=3, max_speed=max_speed)
 
     np.testing.assert_array_equal(peaks, [20])
+
+
+def sweep_keypoints(alphas: np.ndarray) -> np.ndarray:
+    """
+    Places the right wrist on a circle around the right shoulder, one
+    angle per frame. Angle 0 points along the shoulder line towards the
+    opposite shoulder, matching the sweep angle in get_arm_sweep_speed.
+
+    Args:
+        alphas: Wrist angle in degrees for each frame
+
+    Returns:
+        Keypoints array with the wrist orbiting the shoulder.
+    """
+    keypoints = np.zeros(shape=(len(alphas), 17, 3))
+    keypoints[:, :, 2] = 1
+    keypoints[:, KEYPOINT_INDEX["left_shoulder"], :2] = (480, 200)
+    keypoints[:, KEYPOINT_INDEX["right_shoulder"], :2] = (520, 200)
+
+    a = np.radians(alphas)
+    keypoints[:, KEYPOINT_INDEX["right_wrist"], 0] = 520 - 100 * np.cos(a)
+    keypoints[:, KEYPOINT_INDEX["right_wrist"], 1] = 200 - 100 * np.sin(a)
+
+    return keypoints
+
+
+def test_get_arm_sweep_speed_inward_positive(make_person_state: Callable):
+    # The wrist sweeps 20 degrees per frame towards the opposite shoulder
+    alphas = np.full(100, 80.0)
+    alphas[10:14] = (60, 40, 20, 0)
+    alphas[14:] = 0
+
+    state = make_person_state(keypoints=sweep_keypoints(alphas))
+
+    sweep = get_arm_sweep_speed(state, "right", StrikeConfig())
+
+    np.testing.assert_allclose(sweep[10:14], 600, atol=1e-6)
+    np.testing.assert_allclose(sweep[1:10], 0, atol=1e-6)
+
+
+def test_get_arm_sweep_speed_outward_negative(make_person_state: Callable):
+    # Sweeping away is negative
+    alphas = np.full(100, 10.0)
+    alphas[10:14] = (30, 50, 70, 90)
+    alphas[14:] = 90
+
+    state = make_person_state(keypoints=sweep_keypoints(alphas))
+
+    sweep = get_arm_sweep_speed(state, "right", StrikeConfig())
+
+    np.testing.assert_allclose(sweep[10:14], -600, atol=1e-6)
 
 
 def test_get_pixel_to_meter_ratio(make_person_state: Callable,

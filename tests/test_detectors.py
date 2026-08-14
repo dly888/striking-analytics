@@ -9,6 +9,7 @@ from strike_analysis.detections import Strike
 from strike_analysis.detectors import (
     DETECTORS,
     MoveAnalyser,
+    detect_hook,
     detect_kick,
     detect_straight,
     detect_uppercut,
@@ -91,6 +92,58 @@ def test_detect_straight_slow_extension_ignored(guard_keypoints, make_person_sta
     state = make_person_state(keypoints=guard_keypoints)
 
     detections = detect_straight(state, Strike("straight", "right"), StrikeConfig())
+
+    assert not detections.any()
+
+
+def set_hook_arc(keypoints, alphas):
+    """
+    Places the right wrist on a circle around the right shoulder, one
+    angle per frame. Angle 0 points along the shoulder line towards the
+    opposite shoulder, matching the sweep angle in get_arm_sweep_speed.
+
+    Args:
+        keypoints: Keypoints array to be modified in place
+        alphas: Wrist angle in degrees for each frame
+    """
+    radius = np.hypot(90, 90)
+    a = np.radians(alphas)
+
+    keypoints[:, KEYPOINT_INDEX["right_wrist"], 0] = 520 - radius * np.cos(a)
+    keypoints[:, KEYPOINT_INDEX["right_wrist"], 1] = 200 - radius * np.sin(a)
+
+
+def test_detect_hook_fast_swing(guard_keypoints, make_person_state):
+    # The arm starts with the elbow lifted then the wrist sweeps
+    # inward
+    alphas = np.full(N_FRAMES, 135.0)
+    alphas[30:33] = (110, 75, 45)
+    alphas[33:] = 45
+    set_hook_arc(guard_keypoints, alphas)
+
+    guard_keypoints[:30, KEYPOINT_INDEX["right_elbow"], :2] = (610, 200)
+    move_keypoint(guard_keypoints, "right_elbow", 30, (520, 110), [0.3, 0.65, 1.0])
+
+    state = make_person_state(keypoints=guard_keypoints)
+
+    detections = detect_hook(state, Strike("hook", "right"), StrikeConfig())
+
+    assert detections.any()
+
+
+def test_detect_hook_slow_swing_ignored(guard_keypoints, make_person_state):
+    # The same arc spread over 12 frames sweeps too slowly to be a hook
+    alphas = np.full(N_FRAMES, 135.0)
+    alphas[30:42] = np.linspace(127.5, 45, 12)
+    alphas[42:] = 45
+    set_hook_arc(guard_keypoints, alphas)
+
+    guard_keypoints[:30, KEYPOINT_INDEX["right_elbow"], :2] = (610, 200)
+    move_keypoint(guard_keypoints, "right_elbow", 30, (520, 110), np.linspace(0.1, 1.0, 12))
+
+    state = make_person_state(keypoints=guard_keypoints)
+
+    detections = detect_hook(state, Strike("hook", "right"), StrikeConfig())
 
     assert not detections.any()
 
