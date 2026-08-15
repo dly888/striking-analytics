@@ -2,8 +2,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from torch.ao.nn.quantized.functional import threshold
-
 from strike_analysis import TrackCache, get_speed_threshold
 
 from .annotator import VideoAnnotator
@@ -12,6 +10,7 @@ from .detectors import StrikeAnalyser
 from .features import get_joint_speed, get_joint_speed_peaks
 from .inspector import VelocityInspector
 from .tracking import Person, PoseTracker
+from .footwork_analyser import FootworkAnalyser
 
 
 def main(
@@ -47,6 +46,15 @@ def main(
         person_state,
         strike_config=strike_config,
     ).get_detections()
+
+    foot_work_analyser = FootworkAnalyser(person_state)
+    # The left and right edges of the mat, each traced near end first.
+    # Estimated from the mat seams, adjust for other footage
+    foot_work_analyser.select_floor(
+        edge1=[(408, 1070), (600, 640)],
+        edge2=[(1612, 1070), (1400, 640)],
+    )
+    foot_work_analyser.plot_footwork()
 
     video_annotater.add_tracker(
         person_state,
