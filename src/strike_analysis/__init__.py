@@ -3,7 +3,9 @@ from .cache import TrackCache
 from .config import Config, StrikeConfig
 from .constants import KEYPOINT_INDEX, KEYPOINT_NAMES, N_KEYPOINTS, Side
 from .detections import Detections, Strike
-from .detectors import DETECTORS, MoveAnalyser, detect_hook, detect_straight
+from .detectors import detect_hook, detect_straight
+from .strike_analyser import StrikeAnalyser, DETECTORS
+from .footwork_analyser import FootworkAnalyser
 from .features import (
     get_joint_angle,
     get_joint_speed,
@@ -22,7 +24,7 @@ __all__ = [
     "N_KEYPOINTS",
     "Config",
     "Detections",
-    "MoveAnalyser",
+    "StrikeAnalyser",
     "Person",
     "PersonState",
     "PoseTracker",
@@ -44,4 +46,5 @@ __all__ = [
     "longest_nan_run",
     "open_video",
     "segment_bounds",
+    "FootworkAnalyser"
 ]

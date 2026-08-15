@@ -297,7 +297,7 @@ DETECTORS = {
 }
 
 
-class MoveAnalyser:
+class StrikeAnalyser:
     def __init__(
             self, track: PersonState, strike_config: StrikeConfig = StrikeConfig()
     ):

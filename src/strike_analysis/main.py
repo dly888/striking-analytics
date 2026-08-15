@@ -8,7 +8,7 @@ from strike_analysis import TrackCache, get_speed_threshold
 
 from .annotator import VideoAnnotator
 from .config import Config, StrikeConfig
-from .detectors import MoveAnalyser
+from .detectors import StrikeAnalyser
 from .features import get_joint_speed, get_joint_speed_peaks
 from .inspector import VelocityInspector
 from .tracking import Person, PoseTracker
@@ -43,7 +43,7 @@ def main(
     track_id = tracker.get_top_n_ids(n=1)[0]
     person_state = tracker.person_states[track_id]
 
-    detections = MoveAnalyser(
+    detections = StrikeAnalyser(
         person_state,
         strike_config=strike_config,
     ).get_detections()

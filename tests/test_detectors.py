@@ -8,7 +8,7 @@ from strike_analysis.constants import KEYPOINT_INDEX
 from strike_analysis.detections import Strike
 from strike_analysis.detectors import (
     DETECTORS,
-    MoveAnalyser,
+    StrikeAnalyser,
     detect_hook,
     detect_kick,
     detect_straight,
@@ -217,7 +217,7 @@ def test_straight_takes_priority_over_hook(guard_keypoints, make_person_state, m
     for name in DETECTORS:
         monkeypatch.setitem(DETECTORS, name, scripted_detector)
 
-    detections = MoveAnalyser(state).get_detections()
+    detections = StrikeAnalyser(state).get_detections()
 
     # The left hook is within 10 frames of the left straight so it is
     # the same punch, the right hook has no straight to clash with
