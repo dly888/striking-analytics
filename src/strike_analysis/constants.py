@@ -4,6 +4,8 @@ from typing import Literal
 
 Side = Literal["left", "right"]
 
+Stance = Literal["orthodox", "southpaw"]
+
 KEYPOINT_NAMES: tuple[str, ...] = (
     "nose",
     "left_eye",
