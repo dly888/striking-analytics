@@ -20,7 +20,7 @@ def make_person_state():
 
         person = Person(
             name="test", wingspan_m=1.80, weight=71,
-            stance="left", height_m=1.80,
+            stance="orthodox", height_m=1.80,
         )
         return PersonState(
             track_id=1, keypoints=keypoints, boxes=boxes,

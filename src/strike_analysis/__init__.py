@@ -1,7 +1,7 @@
 from .annotator import VideoAnnotator
 from .cache import TrackCache
 from .config import Config, StrikeConfig
-from .constants import KEYPOINT_INDEX, KEYPOINT_NAMES, N_KEYPOINTS, Side
+from .constants import KEYPOINT_INDEX, KEYPOINT_NAMES, N_KEYPOINTS, Side, Stance
 from .detections import Detections, Strike
 from .detectors import detect_hook, detect_straight
 from .strike_analyser import StrikeAnalyser, DETECTORS
@@ -31,6 +31,7 @@ __all__ = [
     "PersonState",
     "PoseTracker",
     "Side",
+    "Stance",
     "Strike",
     "StrikeConfig",
     "TrackCache",
