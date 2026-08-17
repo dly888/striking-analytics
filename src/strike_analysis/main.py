@@ -2,109 +2,101 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from strike_analysis import TrackCache, get_speed_threshold
+import matplotlib.pyplot as plt
 
-from .annotator import VideoAnnotator
 from .config import Config, StrikeConfig
-from .detectors import StrikeAnalyser
-from .features import get_joint_speed, get_joint_speed_peaks
-from .inspector import VelocityInspector
-from .tracking import Person, PoseTracker
+from .features import get_joint_speed
 from .footwork_analyser import FootworkAnalyser
+from .inspector import VelocityInspector
+from .pipeline import analyse, render_annotated_video
+from .tracking import Person
+
+
+def print_progress(frames_processed: int, n_frames: int) -> None:
+    """
+    Prints tracking progress every hundred frames.
+
+    Args:
+        frames_processed: Number of frames tracked so far.
+        n_frames: Total number of frames in the video.
+    """
+    if frames_processed % 100 == 0:
+        print(f"  tracking: {frames_processed}/{n_frames} frames")
 
 
 def main(
-    video_path: Path,
-    person: Person,
-    root: Path,
-    output_path: Path,
-    model: str = "yolo26n-pose.pt",
-    config: Config = Config(),
+        video_path: Path,
+        person: Person,
+        root: Path,
+        cache_path: Path,
+        floor_edge1: list[tuple[float, float]],
+        floor_edge2: list[tuple[float, float]],
+        model: str = "yolo26s-pose.pt",
+        config: Config = Config(),
+        strike_config: StrikeConfig = StrikeConfig(),
+        annotate: bool = False,
+        debug: bool = False,
 ) -> None:
-    track_cache = TrackCache()
+    """
+    Analyses a video and reports the strikes and footwork it found.
 
-    if output_path.exists():
-        tracker = track_cache.load_pose_tracker(path=output_path)
-    else:
-        tracker = PoseTracker(person=person, model_name=model, config=Config())
-        tracker.track(video_path=video_path)
-        track_cache.save_pose_tracker(pose_tracker=tracker, new_path=output_path)
-
-    person_state = tracker.get_person_state(person=person)
-
-    video_annotater = VideoAnnotator(config=config)
-    strike_config = StrikeConfig()
-
-    if person_state is None:
-        print("Fighter not tracked.")
-        return
-
-    track_id = tracker.get_top_n_ids(n=1)[0]
-    person_state = tracker.person_states[track_id]
-
-    detections = StrikeAnalyser(
-        person_state,
+    Args:
+        video_path: Path of the video file.
+        person: The person being tracked.
+        root: Root of the project, annotated videos are written under it.
+        cache_path: Path the tracked keypoints are cached at.
+        floor_edge1: Two (x, y) points along one floor edge, near end first.
+        floor_edge2: Two (x, y) points along the opposite edge, near end first.
+        model: Name or path of the pose model.
+        config: Config object.
+        strike_config: StrikeConfig object.
+        annotate: Whether to write an annotated copy of the video, which
+                  reads the whole video a second time.
+        debug: Whether to print wrist speed stats as well as the results.
+    """
+    result = analyse(
+        video_path=video_path,
+        person=person,
+        cache_path=cache_path,
+        model=model,
+        config=config,
         strike_config=strike_config,
-    ).get_detections()
-
-    foot_work_analyser = FootworkAnalyser(person_state)
-    # The left and right edges of the mat, each traced near end first.
-    # Estimated from the mat seams, adjust for other footage
-    foot_work_analyser.select_floor(
-        edge1=[(408, 1070), (600, 640)],
-        edge2=[(1612, 1070), (1400, 640)],
-    )
-    foot_work_analyser.plot_footwork()
-
-    video_annotater.add_tracker(
-        person_state,
-        detections,
+        track_progress=print_progress,
     )
 
-
-    for side in ("left", "right"):
-        speed = get_joint_speed(person_state, f"{side}_wrist", strike_config),
-        current_threshold = get_speed_threshold(person_state, strike_config.min_straight_speed_mps)
-        max_threshold = get_speed_threshold(person_state, strike_config.max_straight_speed_mps)
-        print(
-            f"  {side} wrist peaks: "
-            f"{
-                get_joint_speed_peaks(
-                    speed=speed[0],
-                    threshold=current_threshold,
-                    max_speed=max_threshold
-                )
-            }"
-        )
+    person_state = result.person_state
 
     print(
         f"\nTrack {person_state.track_id}: seen in "
         f"{int(person_state.detected.sum())}/{person_state.frames_processed} frames"
     )
 
-    for strike, count in detections.counts(config.min_punch_frames).items():
-        starts = detections.start_frames(strike)
+    for strike, count in result.detections.counts(config.min_punch_frames).items():
         print(f"  {strike.label}: {count}")
-        print(f"  at frames: {[int(s) for s in starts]}")
 
-    for side in ("left", "right"):
-        print(
-            f"  {side} wrist stats: "
-            f"{
-                VelocityInspector(
-                    get_joint_speed(
-                        person_state,
-                        f'{side}_wrist',
-                        strike_config,
-                    )
-                ).get_stats()
-            }"
+    print(f"\n{len(result.strikes)} strikes thrown:")
+
+    for record in result.strikes:
+        print(f"  {record['time_s']:6.2f}s  {record['side']} {record['type']}")
+
+    if debug:
+        VelocityInspector().print_wrist_speeds(
+            left_speed=get_joint_speed(person_state, "left_wrist", strike_config)
         )
 
-    video_annotater.annotate_video(
-        video_path=video_path,
-        new_file_path=root / "outputs" / "annotate_test_0004.mp4",
-    )
+    footwork_analyser = FootworkAnalyser(person_state)
+    footwork_analyser.select_floor(edge1=floor_edge1, edge2=floor_edge2)
+    footwork_analyser.get_plot_figure()
+    plt.show()
+
+    if annotate:
+        annotated_path = render_annotated_video(
+            result=result,
+            video_path=video_path,
+            new_file_path=root / "outputs" / f"{video_path.stem}_annotated.mp4",
+            config=config,
+        )
+        print(f"\nAnnotated video written to {annotated_path}")
 
 
 if __name__ == "__main__":
@@ -117,7 +109,7 @@ if __name__ == "__main__":
         / "Full MMA Shadow Boxing With Sabaki by Giga Chikadze [IEu0SAWLiXw].mp4"
     )
 
-    OUTPUT_PATH = PROJECT_ROOT / "outputs" / "giga.npz"
+    CACHE_PATH = PROJECT_ROOT / "outputs" / "giga.npz"
 
     fighter = Person(
         name="Giga Chikadze",
@@ -131,6 +123,11 @@ if __name__ == "__main__":
         video_path=VIDEO_PATH,
         person=fighter,
         root=PROJECT_ROOT,
-        output_path=OUTPUT_PATH,
+        cache_path=CACHE_PATH,
+        # The left and right edges of the mat, each traced near end first.
+        # Estimated from the mat seams, adjust for other footage
+        floor_edge1=[(408, 1070), (600, 640)],
+        floor_edge2=[(1612, 1070), (1400, 640)],
         model=str(PROJECT_ROOT / "models" / "yolo26s-pose.pt"),
+        annotate=True,
     )

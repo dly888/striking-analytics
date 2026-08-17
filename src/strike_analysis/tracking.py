@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections import defaultdict
 from dataclasses import dataclass
 from pathlib import Path
+import cv2
 
 import numpy as np
 from ultralytics import YOLO
@@ -147,16 +148,20 @@ class PoseTracker:
                 return person_state
         raise ValueError("Person not tracked.")
 
-    def track(self, video_path: Path) -> None:
+    def track(self, video_path: Path, track_progress=None) -> None:
         """
         Runs model on video and tracks the state(boxes, keypoints) of the person in the video.
 
         Args:
             video_path: Path of the video file.
+            track_progress: Optional callback invoked after each frame with
+                            the number of frames processed so far and the
+                            total, to report tracking progress.
         """
         fps = get_fps(video_path)
         detections: dict[int, dict[int, tuple]] = defaultdict(dict)
         frames_processed = 0
+        n_frames = self.get_n_frames(video_path)
 
         results = self.model.track(
             source=str(video_path),
@@ -168,6 +173,9 @@ class PoseTracker:
 
         for frame_idx, result in enumerate(results):
             frames_processed = frame_idx + 1
+
+            if track_progress is not None:
+                track_progress(frame_idx, n_frames)
 
             if result.boxes.id is None or result.keypoints.conf is None:
                 continue
@@ -247,3 +255,10 @@ class PoseTracker:
             key=lambda track_id: int(self.person_states[track_id].detected.sum()),
             reverse=True,
         )[:n]
+
+    def get_n_frames(self, video_path: Path) -> int:
+        """Returns the number of frames in a video."""
+        cap = cv2.VideoCapture(str(video_path))
+        n_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        cap.release()
+        return n_frames

@@ -110,3 +110,39 @@ class Detections:
                 row_out[start:end] = True
 
         return Detections(self.strikes, expanded)
+
+    def to_records(self, fps: float, min_frames: int = 1) -> list[dict]:
+        """
+        Flattens the detections into one record per strike thrown.
+
+        A strike can be detected over several frames so each detection is
+        recorded once at the starting frame. Strikes thrown at the same
+        time from different limbs each have their own record.
+
+        Args:
+            fps: Frames per second of the video, used to time each strike.
+            min_frames: Minimum number of frames a strike needs to be
+                        detected for to be counted for.
+
+        Returns:
+            List of strikes in the order they were thrown, each holding the
+            frame, the time in seconds, the strike type and the side.
+        """
+        records = []
+
+        for strike in self.strikes:
+            starts, ends = segment_bounds(self[strike])
+
+            for start, end in zip(starts, ends):
+                if end - start < min_frames:
+                    continue
+
+                records.append({
+                    "frame": int(start),
+                    "time_s": float(start / fps),
+                    "type": strike.strike_type,
+                    "side": strike.side,
+                })
+
+        return sorted(records, key=lambda record: record["frame"])
+

@@ -180,13 +180,16 @@ class FootworkAnalyser:
             framealpha=0.85,
         )
 
-    def plot_footwork(self, bins=40, smoothing=1.5):
+    def get_plot_figure(self, bins=40, smoothing=1.5):
         """
         Plots a heatmap of where the person's feet spend time on the floor.
 
         Args:
             bins: Number of bins along each axis of the floor
             smoothing: Standard deviation of the smoothing, in cells
+
+        Returns:
+            Figure of the plot
         """
         self.get_corners()
         self.get_homography()
@@ -246,5 +249,5 @@ class FootworkAnalyser:
         )
 
         fig.tight_layout()
-        plt.show()
 
+        return fig

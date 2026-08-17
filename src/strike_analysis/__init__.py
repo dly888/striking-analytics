@@ -14,11 +14,13 @@ from .features import (
 )
 from .geometry import calculate_angles, count_segments, longest_nan_run, segment_bounds
 from .inspector import VelocityInspector
+from .pipeline import AnalysisResult, analyse, render_annotated_video
 from .tracking import Person, PersonState, PoseTracker
 from .video import get_fps, open_video
 
 __all__ = [
     "DETECTORS",
+    "AnalysisResult",
     "KEYPOINT_INDEX",
     "KEYPOINT_NAMES",
     "N_KEYPOINTS",
@@ -34,6 +36,7 @@ __all__ = [
     "TrackCache",
     "VelocityInspector",
     "VideoAnnotator",
+    "analyse",
     "calculate_angles",
     "count_segments",
     "detect_hook",
@@ -45,6 +48,7 @@ __all__ = [
     "get_speed_threshold",
     "longest_nan_run",
     "open_video",
+    "render_annotated_video",
     "segment_bounds",
     "FootworkAnalyser"
 ]
