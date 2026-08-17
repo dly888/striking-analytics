@@ -16,14 +16,14 @@ class AnalysisResult:
     """
     Everything the analysis knows about one video.
 
-    Holds the tracked keypoints and the detections themselves, so callers
-    can annotate a video or analyse footwork, alongside a flat list of the
+    Holds the tracked keypoints and the detections themselves, so you
+    can annotate a video or analyse footwork, with a flat list of the
     strikes thrown for reporting.
     """
 
     person_state: PersonState
     detections: Detections
-    strikes: list[dict] = field(default_factory=list)
+    strike_records: list[dict] = field(default_factory=list)
 
 
 def analyse(
@@ -38,7 +38,8 @@ def analyse(
     """
     Tracks the fighter in a video and detects the strikes they throw.
 
-    Tracked keypoints are cached and reused.
+    Tracked keypoints are cached and reused. Runs the model to track the fighter
+    then analyses the striking.
 
     Args:
         video_path: Path of the video file.
@@ -47,7 +48,7 @@ def analyse(
         model: Name or path of the pose model.
         config: Config object.
         strike_config: StrikeConfig object.
-        track_progress: Optional callback invoked after each frame with the
+        track_progress: Optional callback called after each frame with the
                         number of frames processed so far and the total.
 
     Returns:
@@ -75,30 +76,25 @@ def analyse(
     return AnalysisResult(
         person_state=person_state,
         detections=detections,
-        strikes=detections.to_records(person_state.fps, config.min_punch_frames),
+        strike_records=detections.to_records(person_state.fps, config.min_punch_frames),
     )
 
 
 def render_annotated_video(
     result: AnalysisResult,
     video_path: Path,
-    new_file_path: Path,
+    output_path: Path,
     config: Config = Config(),
-) -> Path:
+) -> None:
     """
     Creates video with the tracking and strikes drawn on it.
 
     Args:
         result: AnalysisResult of the video.
         video_path: Path of the video file.
-        new_file_path: Path of the new annotated video file.
+        output_path: Path of the new annotated video file.
         config: Config object.
-
-    Returns:
-        Path the annotated video was written to.
     """
     annotator = VideoAnnotator(config=config)
     annotator.add_tracker(result.person_state, result.detections)
-    annotator.annotate_video(video_path=video_path, new_file_path=new_file_path)
-
-    return new_file_path
+    annotator.annotate_video(video_path=video_path, new_file_path=output_path)

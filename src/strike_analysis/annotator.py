@@ -146,7 +146,8 @@ class VideoAnnotator:
 
             writer = cv2.VideoWriter(
                 str(new_file_path),
-                cv2.VideoWriter_fourcc(*"mp4v"),
+                # H.264, browsers can't play the mp4v codec
+                cv2.VideoWriter_fourcc(*"avc1"),
                 get_fps(video_path),
                 (width, height),
             )
