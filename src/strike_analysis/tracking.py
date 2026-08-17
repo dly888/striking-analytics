@@ -9,7 +9,7 @@ import numpy as np
 from ultralytics import YOLO
 
 from .config import Config
-from .constants import KEYPOINT_INDEX, N_KEYPOINTS, Side
+from .constants import KEYPOINT_INDEX, N_KEYPOINTS, Stance
 from .video import get_fps
 
 def smooth_keypoints(
@@ -80,7 +80,7 @@ class Person:
     weight: float
     height_m: float
     wingspan_m: float
-    stance: Side
+    stance: Stance
 
 
 @dataclass(frozen=True)
@@ -148,7 +148,7 @@ class PoseTracker:
                 return person_state
         raise ValueError("Person not tracked.")
 
-    def track(self, video_path: Path, track_progress=None) -> None:
+    def track(self, video_path: Path, track_progress=True) -> None:
         """
         Runs model on video and tracks the state(boxes, keypoints) of the person in the video.
 
@@ -174,8 +174,8 @@ class PoseTracker:
         for frame_idx, result in enumerate(results):
             frames_processed = frame_idx + 1
 
-            if track_progress is not None:
-                track_progress(frame_idx, n_frames)
+            if track_progress:
+                self.print_progress(frame_idx, n_frames)
 
             if result.boxes.id is None or result.keypoints.conf is None:
                 continue
@@ -262,3 +262,15 @@ class PoseTracker:
         n_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
         cap.release()
         return n_frames
+
+    @staticmethod
+    def print_progress(frames_processed: int, n_frames: int) -> None:
+        """
+        Prints tracking progress every hundred frames.
+
+        Args:
+            frames_processed: Number of frames tracked so far.
+            n_frames: Total number of frames in the video.
+        """
+        if frames_processed % 100 == 0:
+            print(f"  tracking: {frames_processed}/{n_frames} frames")
