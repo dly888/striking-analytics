@@ -12,18 +12,6 @@ from .pipeline import analyse, render_annotated_video
 from .tracking import Person
 
 
-def print_progress(frames_processed: int, n_frames: int) -> None:
-    """
-    Prints tracking progress every hundred frames.
-
-    Args:
-        frames_processed: Number of frames tracked so far.
-        n_frames: Total number of frames in the video.
-    """
-    if frames_processed % 100 == 0:
-        print(f"  tracking: {frames_processed}/{n_frames} frames")
-
-
 def main(
         video_path: Path,
         person: Person,
@@ -61,7 +49,7 @@ def main(
         model=model,
         config=config,
         strike_config=strike_config,
-        track_progress=print_progress,
+        track_progress=True ,
     )
 
     person_state = result.person_state
@@ -74,9 +62,9 @@ def main(
     for strike, count in result.detections.counts(config.min_punch_frames).items():
         print(f"  {strike.label}: {count}")
 
-    print(f"\n{len(result.strikes)} strikes thrown:")
+    print(f"\n{len(result.strike_records)} strikes thrown:")
 
-    for record in result.strikes:
+    for record in result.strike_records:
         print(f"  {record['time_s']:6.2f}s  {record['side']} {record['type']}")
 
     if debug:
@@ -90,10 +78,12 @@ def main(
     plt.show()
 
     if annotate:
-        annotated_path = render_annotated_video(
+        annotated_path = root / "outputs" / f"{video_path.stem}_annotated.mp4"
+
+        render_annotated_video(
             result=result,
             video_path=video_path,
-            new_file_path=root / "outputs" / f"{video_path.stem}_annotated.mp4",
+            output_path=annotated_path,
             config=config,
         )
         print(f"\nAnnotated video written to {annotated_path}")
@@ -116,7 +106,7 @@ if __name__ == "__main__":
         height_m=1.83,
         weight=66,
         wingspan_m=1.88,
-        stance="right",
+        stance="orthodox",
     )
 
     main(
