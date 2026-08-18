@@ -7,13 +7,12 @@ from strike_analysis import StrikeConfig
 from strike_analysis.constants import KEYPOINT_INDEX
 from strike_analysis.detections import Strike
 from strike_analysis.detectors import (
-    DETECTORS,
-    StrikeAnalyser,
     detect_hook,
     detect_kick,
     detect_straight,
     detect_uppercut,
 )
+from strike_analysis.strike_analyser import DETECTORS, StrikeAnalyser
 
 N_FRAMES = 60
 

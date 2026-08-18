@@ -5,7 +5,7 @@ from .constants import KEYPOINT_INDEX, KEYPOINT_NAMES, N_KEYPOINTS, Side, Stance
 from .detections import Detections, Strike
 from .detectors import detect_hook, detect_straight
 from .strike_analyser import StrikeAnalyser, DETECTORS
-from .footwork_analyser import FootworkAnalyser
+from .footwork_analysis import FootworkAnalyser
 from .features import (
     get_joint_angle,
     get_joint_speed,

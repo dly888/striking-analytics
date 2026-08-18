@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 import cv2
@@ -148,7 +149,11 @@ class PoseTracker:
                 return person_state
         raise ValueError("Person not tracked.")
 
-    def track(self, video_path: Path, track_progress=True) -> None:
+    def track(
+        self,
+        video_path: Path,
+        track_progress: Callable[[int, int], None] | None = None,
+    ) -> None:
         """
         Runs model on video and tracks the state(boxes, keypoints) of the person in the video.
 
@@ -174,8 +179,8 @@ class PoseTracker:
         for frame_idx, result in enumerate(results):
             frames_processed = frame_idx + 1
 
-            if track_progress:
-                self.print_progress(frame_idx, n_frames)
+            if track_progress is not None:
+                track_progress(frames_processed, n_frames)
 
             if result.boxes.id is None or result.keypoints.conf is None:
                 continue
@@ -262,15 +267,3 @@ class PoseTracker:
         n_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
         cap.release()
         return n_frames
-
-    @staticmethod
-    def print_progress(frames_processed: int, n_frames: int) -> None:
-        """
-        Prints tracking progress every hundred frames.
-
-        Args:
-            frames_processed: Number of frames tracked so far.
-            n_frames: Total number of frames in the video.
-        """
-        if frames_processed % 100 == 0:
-            print(f"  tracking: {frames_processed}/{n_frames} frames")

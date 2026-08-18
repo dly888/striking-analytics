@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 
 from .config import Config, StrikeConfig
 from .features import get_joint_speed
-from .footwork_analyser import FootworkAnalyser
+from .footwork_analysis import FootworkAnalyser
 from .inspector import VelocityInspector
 from .pipeline import analyse, render_annotated_video
 from .tracking import Person
@@ -49,7 +49,6 @@ def main(
         model=model,
         config=config,
         strike_config=strike_config,
-        track_progress=True ,
     )
 
     person_state = result.person_state

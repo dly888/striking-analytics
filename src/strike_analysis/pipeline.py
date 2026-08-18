@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -33,7 +34,7 @@ def analyse(
     model: str,
     config: Config = Config(),
     strike_config: StrikeConfig = StrikeConfig(),
-    track_progress=None,
+    track_progress: Callable[[int, int], None] | None = None,
 ) -> AnalysisResult:
     """
     Tracks the fighter in a video and detects the strikes they throw.
