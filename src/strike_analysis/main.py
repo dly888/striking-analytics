@@ -8,7 +8,7 @@ from .config import Config, StrikeConfig
 from .features import get_joint_speed
 from .footwork_analysis import FootworkAnalyser
 from .inspector import VelocityInspector
-from .pipeline import analyse, render_annotated_video
+from .pipeline import analyse_video, render_annotated_video
 from .tracking import Person
 
 
@@ -42,7 +42,7 @@ def main(
                   reads the whole video a second time.
         debug: Whether to print wrist speed stats as well as the results.
     """
-    result = analyse(
+    result = analyse_video(
         video_path=video_path,
         person=person,
         cache_path=cache_path,

@@ -14,7 +14,7 @@ from .features import (
 )
 from .geometry import calculate_angles, count_segments, longest_nan_run, segment_bounds
 from .inspector import VelocityInspector
-from .pipeline import AnalysisResult, analyse, render_annotated_video
+from .pipeline import AnalysisResult, analyse_video, render_annotated_video
 from .tracking import Person, PersonState, PoseTracker
 from .video import get_fps, open_video
 
@@ -37,7 +37,7 @@ __all__ = [
     "TrackCache",
     "VelocityInspector",
     "VideoAnnotator",
-    "analyse",
+    "analyse_video",
     "calculate_angles",
     "count_segments",
     "detect_hook",

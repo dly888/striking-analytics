@@ -140,7 +140,7 @@ class Detections:
                 records.append({
                     "frame": int(start),
                     "time_s": float(start / fps),
-                    "type": strike.strike_type,
+                    "strike_type": strike.strike_type,
                     "side": strike.side,
                 })
 

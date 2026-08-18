@@ -125,7 +125,7 @@ if st.button("Analyse"):
     # Run analysis
     # --------------------------------------------------------
 
-    result = sa.analyse(
+    result = sa.analyse_video(
         video_path=video_path,
         person=person,
         cache_path=cache_path,

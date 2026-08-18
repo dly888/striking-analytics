@@ -10,7 +10,7 @@ from .geometry import calculate_angles
 from .tracking import PersonState
 
 
-def get_joint_speed(state: PersonState, name: str, config: StrikeConfig) -> np.ndarray:
+def get_joint_speed(state: PersonState, joint_name: str, config: StrikeConfig) -> np.ndarray:
     """Calculate the speed of a joint in pixels per second.
 
     Missing keypoint detections handled by using the most recent valid
@@ -20,7 +20,7 @@ def get_joint_speed(state: PersonState, name: str, config: StrikeConfig) -> np.n
 
     Args:
         state: PersonTrack object
-        name: Name of the joint/keypoint
+        joint_name: Name of the joint/keypoint
         config: Config object
 
     Returns:
@@ -28,7 +28,7 @@ def get_joint_speed(state: PersonState, name: str, config: StrikeConfig) -> np.n
         Frames where the speed can't be calculated have NaN values.
     """
 
-    xy = state.positions(name)
+    xy = state.positions(joint_name)
 
     # Assume if x is NaN then y is NaN.
     visible = ~np.isnan(xy[:, 0])

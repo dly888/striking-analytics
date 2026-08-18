@@ -27,7 +27,7 @@ class AnalysisResult:
     strike_records: list[dict] = field(default_factory=list)
 
 
-def analyse(
+def analyse_video(
     video_path: Path,
     person: Person,
     cache_path: Path,
