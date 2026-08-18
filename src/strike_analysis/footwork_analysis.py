@@ -27,11 +27,6 @@ class FootworkAnalyser:
         """
         Sets the floor region by tracing two opposite edges of the floor.
 
-        Each edge is given as two points along it, near end first. The
-        points only have to lie on the edge, so an edge that runs out of
-        frame can still be traced from the part that is visible and
-        extended to where its corner falls.
-
         Args:
             edge1: Two (x, y) points along one floor edge, near end first
             edge2: Two (x, y) points along the opposite edge, near end first

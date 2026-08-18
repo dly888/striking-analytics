@@ -204,7 +204,8 @@ if "result" in st.session_state:
     st.subheader("Select floor edges")
 
     st.write(
-        "Draw two lines along the edges of the floor."
+        "Trace the left edge then the right edge, each near end first: "
+        "near-left, far-left, near-right, far-right."
     )
 
     frame = st.session_state["frame"]
