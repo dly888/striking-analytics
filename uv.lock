@@ -489,6 +489,7 @@ dependencies = [
     { name = "scipy" },
     { name = "seaborn" },
     { name = "streamlit" },
+    { name = "streamlit-image-coordinates" },
     { name = "ultralytics" },
 ]
 
@@ -507,6 +508,7 @@ requires-dist = [
     { name = "scipy", specifier = ">=1.18.0" },
     { name = "seaborn", specifier = ">=0.13.2" },
     { name = "streamlit", specifier = ">=1.61.1" },
+    { name = "streamlit-image-coordinates", specifier = ">=0.4.1" },
     { name = "ultralytics", specifier = ">=8.4.105" },
 ]
 
@@ -1255,6 +1257,18 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/ad/4a/6d0bf2f78de59924564caf47298341c09f61bf3814f15f0d15ef09fe1e3d/streamlit-1.61.1.tar.gz", hash = "sha256:68acf1ff1b6005b19205c2777d832deea0c1edd6fbbf7f43f091b96220e5e35f", size = 9907073, upload-time = "2026-08-05T14:51:01.956Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/4f/e3/deeea39117e1ffbce29755b45bceb214692e0a0aa496a17ce742b98ef3e1/streamlit-1.61.1-py3-none-any.whl", hash = "sha256:3f0ebf6764c3f938f8107414c9533942fa85a84b57affdaa7727d562210d8ece", size = 10512871, upload-time = "2026-08-05T14:50:59.246Z" },
+]
+
+[[package]]
+name = "streamlit-image-coordinates"
+version = "0.4.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "streamlit" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/1e/19/fe6d7087c27451f0a3d3063180969b77fc58b1fb4ef7db62c4428d15b08a/streamlit_image_coordinates-0.4.1.tar.gz", hash = "sha256:206795398525adeb4288aec983620377d6d700e16789dda26f4ad5c3ce14dad9", size = 6025, upload-time = "2026-08-14T15:12:30.386Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/d9/b4/bb1de84d92cb9f07962dd3559809ec76c1259eb99af99437101088590b30/streamlit_image_coordinates-0.4.1-py3-none-any.whl", hash = "sha256:7cdab1b6d7688eb3c79e8d520f34e9e61c9a22766a9c217ae09f6604f7ba7e7f", size = 7787, upload-time = "2026-08-14T15:12:29.473Z" },
 ]
 
 [[package]]

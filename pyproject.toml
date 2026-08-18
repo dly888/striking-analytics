@@ -12,6 +12,7 @@ dependencies = [
     "scipy>=1.18.0",
     "seaborn>=0.13.2",
     "streamlit>=1.61.1",
+    "streamlit-image-coordinates>=0.4.1",
     "ultralytics>=8.4.105",
 ]
 
