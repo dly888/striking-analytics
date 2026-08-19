@@ -3,6 +3,7 @@ from __future__ import annotations
 import numpy as np
 
 from .config import StrikeConfig
+from .constants import SIDES, STRIKE_TYPES
 from .detections import Detections, Strike
 from .features import get_speed_threshold
 from .tracking import PersonState
@@ -37,8 +38,8 @@ class StrikeAnalyser:
         """
         strikes = tuple(
             Strike(technique, side)
-            for technique in DETECTORS
-            for side in ("left", "right")
+            for technique in STRIKE_TYPES
+            for side in SIDES
         )
         mask = np.stack(
             [
@@ -48,7 +49,7 @@ class StrikeAnalyser:
         ).astype(bool)
 
         # If both a hook and straight hare detected, the straight will take priority
-        for side in ("left", "right"):
+        for side in SIDES:
             straight_row = mask[strikes.index(Strike("straight", side))]
             hook_row = mask[strikes.index(Strike("hook", side))]
 

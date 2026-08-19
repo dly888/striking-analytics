@@ -6,6 +6,16 @@ Side = Literal["left", "right"]
 
 Stance = Literal["orthodox", "southpaw"]
 
+# Order sets the row order of the detection mask
+STRIKE_TYPES: tuple[str, ...] = (
+    "straight",
+    "hook",
+    "uppercut",
+    "kick",
+)
+
+SIDES: tuple[Side, ...] = ("left", "right")
+
 KEYPOINT_NAMES: tuple[str, ...] = (
     "nose",
     "left_eye",

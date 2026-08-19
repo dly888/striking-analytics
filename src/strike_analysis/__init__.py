@@ -1,7 +1,15 @@
 from .annotator import VideoAnnotator
 from .cache import TrackCache
 from .config import Config, StrikeConfig
-from .constants import KEYPOINT_INDEX, KEYPOINT_NAMES, N_KEYPOINTS, Side, Stance
+from .constants import (
+    KEYPOINT_INDEX,
+    KEYPOINT_NAMES,
+    N_KEYPOINTS,
+    SIDES,
+    STRIKE_TYPES,
+    Side,
+    Stance,
+)
 from .detections import Detections, Strike
 from .detectors import detect_hook, detect_straight
 from .strike_analyser import StrikeAnalyser, DETECTORS
@@ -20,6 +28,8 @@ from .video import get_fps, open_video
 
 __all__ = [
     "DETECTORS",
+    "SIDES",
+    "STRIKE_TYPES",
     "AnalysisResult",
     "KEYPOINT_INDEX",
     "KEYPOINT_NAMES",
