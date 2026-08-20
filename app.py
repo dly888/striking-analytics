@@ -2,16 +2,64 @@ from pathlib import Path
 import tempfile
 
 import cv2
+import numpy as np
+import pandas as pd
 import streamlit as st
 from PIL import Image
+from pygments.styles import stata_dark
+from streamlit.runtime import stats
 from streamlit_image_coordinates import streamlit_image_coordinates
 
 import strike_analysis as sa
 
-
 CACHE_DIR = Path("cache")
 MODEL = "yolo26s-pose.pt"
 DISPLAY_WIDTH = 800
+PACING_BIN_S = 5.0
+
+
+def build_strike_table(stats: sa.StrikingStats) -> pd.DataFrame:
+    """
+    Reshape the strike dictionaries into a table.
+
+    The stats are keyed by side and strike type, which reads poorly
+    as a list, so they are pivoted into one row per strike.
+
+    Args:
+        stats: StrikingStats object for the analysed video.
+
+    Returns:
+        DataFrame with one row per side and strike type.
+    """
+    rows = []
+
+    for side in sa.SIDES:
+        for strike_type in sa.STRIKE_TYPES:
+            key = f"{side}_{strike_type}"
+
+            rows.append({
+                "Strike": f"{side.title()} {strike_type}",
+                "Count": int(stats.strike_counts[key]),
+                "Per sec": round(stats.strike_rates[key], 1),
+                "Max speed (m/s)": round(stats.max_speeds_mps[key], 1),
+            })
+
+    return pd.DataFrame(rows)
+
+
+RHYTHM_HELP = """
+| Score | What it means |
+| --- | --- |
+| Below 0.5 | Metronomic. Nearly every gap is the same length. |
+| 0.5 to 1.0 | Fairly even. More regular than random, |
+| Around 1.0 | As unpredictable as random timing. |
+| Above 1.0 | Bursty. Tight combinations separated by longer resets. |
+
+**NOTE.** A fighter repeating one short gap
+and one long gap over and over is highly readable, but counts
+as a higher score. Feints, level changes etc are not counted
+here.
+"""
 
 
 st.title("Kickboxing Analysis")
@@ -35,17 +83,17 @@ height = st.number_input(
     value=None,
 )
 
-weight = st.number_input(
-    "Weight (kg)",
-    min_value=30.0,
-    max_value=200.0,
-    value=None,
-)
-
 wingspan = st.number_input(
     "Wingspan (m)",
     min_value=1.0,
     max_value=2.5,
+    value=None,
+)
+
+weight = st.number_input(
+    "Weight (kg)",
+    min_value=30.0,
+    max_value=200.0,
     value=None,
 )
 
@@ -136,6 +184,18 @@ if st.button("Analyse"):
     )
 
     progress.empty()
+    TOTAL_SECONDS = result.detections.n_frames / result.person_state.fps
+
+    # --------------------------------------------------------
+    # Calculate striking stats
+    # --------------------------------------------------------
+
+    stats_calculator = sa.StrikingStatsCalculator(
+        person_state=result.person_state,
+        detections=result.detections,
+    )
+
+    stats = stats_calculator.calculate_striking_stats()
 
     # --------------------------------------------------------
     # Render annotated video
@@ -185,6 +245,7 @@ if st.button("Analyse"):
     # --------------------------------------------------------
 
     st.session_state["result"] = result
+    st.session_state["stats"] = stats
     st.session_state["video_path"] = video_path
     st.session_state["frame"] = frame
     st.session_state["annotated_video_path"] = (
@@ -194,6 +255,7 @@ if st.button("Analyse"):
     # Reset floor selection when a new analysis is performed
     st.session_state.pop("floor_points", None)
     st.session_state.pop("floor", None)
+    st.session_state.pop("footwork_analyser", None)
 
 # ============================================================
 # Floor selection
@@ -282,6 +344,10 @@ if "result" in st.session_state:
             edge2=edge2,
         )
 
+        st.session_state["footwork_analyser"] = (
+            footwork_analyser
+        )
+
         st.success("Floor selected.")
 
     else:
@@ -320,10 +386,113 @@ if "annotated_video_path" in st.session_state:
         )
 
 # ============================================================
+# Striking Stats
+# ============================================================
+
+if "stats" in st.session_state:
+
+    stats = st.session_state["stats"]
+
+    st.subheader("Striking Stats")
+
+    # --------------------------------------------------------
+    # Headline numbers
+    # --------------------------------------------------------
+
+    strikes_per_sec = sum(stats.strike_rates.values())
+
+    total_col, rate_col, combo_col, rhythm_col = st.columns(4)
+
+    total_col.metric("Total strikes", stats.total_strikes)
+    rate_col.metric("Strikes per sec", f"{strikes_per_sec:.1f}")
+    combo_col.metric("Combo count", stats.combo_count)
+    rhythm_col.metric("Rhythm score (CV)", f"{stats.rhythm_cv:.2f}")
+
+    st.caption(
+        "Rhythm score is the coefficient of variation of the gaps "
+        "between strikes. Lower means more predictable timing."
+    )
+
+    with st.expander("How to read the rhythm score"):
+        st.markdown(RHYTHM_HELP)
+
+    # --------------------------------------------------------
+    # Breakdown by strike type
+    # --------------------------------------------------------
+
+    st.dataframe(
+        build_strike_table(stats),
+        hide_index=True,
+    )
+
+    # --------------------------------------------------------
+    # Number of Strikes over time
+    # --------------------------------------------------------
+
+    pacing = pd.DataFrame(
+        {
+            "Time (s)": list(stats.pacing_bins.keys()),
+            "Strikes": list(stats.pacing_bins.values()),
+        }
+    )
+
+    st.caption(
+        f"Strikes thrown per {PACING_BIN_S:.0f} second block"
+    )
+
+    st.bar_chart(
+        pacing,
+        x="Time (s)",
+        y="Strikes",
+    )
+
+    # --------------------------------------------------------
+    # Fatigue over time
+    # --------------------------------------------------------
+
+    st.caption(
+        "Peak speed of every strike thrown."
+    )
+
+    thrown = [
+        strike_name
+        for strike_name, speeds in stats.strike_speeds.items()
+        if np.isfinite(speeds).any()
+    ]
+
+    if thrown:
+        labels = [
+            strike_name.replace("_", " ").capitalize()
+            for strike_name in thrown
+        ]
+
+        for tab, strike_name in zip(st.tabs(labels), thrown):
+            fatigue = pd.DataFrame(
+                {
+                    "Time (s)": stats.strike_times_s[strike_name],
+                    "Speed (m/s)": stats.strike_speeds[strike_name],
+                }
+            )
+
+            tab.scatter_chart(
+                fatigue,
+                x="Time (s)",
+                y="Speed (m/s)",
+            )
+    else:
+        st.info("No strikes were measured, so there is nothing to plot.")
+
+# ============================================================
 # Footwork Analysis
 # ============================================================
-st.subheader("Footwork Analysis")
 
-fig = footwork_analyser.get_plot_figure()
+if "footwork_analyser" in st.session_state:
 
-st.pyplot(fig)
+    st.subheader("Footwork Analysis")
+
+    fig = (
+        st.session_state["footwork_analyser"]
+        .get_plot_figure()
+    )
+
+    st.pyplot(fig)

@@ -7,6 +7,7 @@ from .constants import (
     KEYPOINT_NAMES,
     N_KEYPOINTS,
     SIDES,
+    STRIKE_TYPE_TO_JOINT,
     STRIKE_TYPES,
     Side,
     Stance,
@@ -14,6 +15,7 @@ from .constants import (
 from .detections import Detections, Strike
 from .detectors import detect_hook, detect_straight
 from .strike_analyser import StrikeAnalyser, DETECTORS
+from .striking_stats import StrikingStats, StrikingStatsCalculator
 from .footwork_analysis import FootworkAnalyser
 from .features import (
     get_joint_angle,
@@ -30,6 +32,7 @@ from .video import get_fps, open_video
 __all__ = [
     "DETECTORS",
     "SIDES",
+    "STRIKE_TYPE_TO_JOINT",
     "STRIKE_TYPES",
     "AnalysisResult",
     "JOINT_NAMES",
@@ -39,6 +42,8 @@ __all__ = [
     "Config",
     "Detections",
     "StrikeAnalyser",
+    "StrikingStats",
+    "StrikingStatsCalculator",
     "Person",
     "PersonState",
     "PoseTracker",

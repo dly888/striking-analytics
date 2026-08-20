@@ -14,6 +14,15 @@ STRIKE_TYPES: tuple[str, ...] = (
     "kick",
 )
 
+# The joint that throws each strike type, used to measure its speed.
+# Combine with a side as f"{side}_{joint}" to get the keypoint name.
+STRIKE_TYPE_TO_JOINT: dict[str, str] = {
+    "straight": "wrist",
+    "hook": "wrist",
+    "uppercut": "wrist",
+    "kick": "ankle",
+}
+
 SIDES: tuple[Side, ...] = ("left", "right")
 
 KEYPOINT_NAMES: tuple[str, ...] = (

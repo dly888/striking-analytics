@@ -2,8 +2,11 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from strike_analysis import Detections, PersonState, get_joint_speed, StrikeConfig, JOINT_NAMES, SIDES, STRIKE_TYPES, \
-    count_segments
+from .config import StrikeConfig
+from .constants import JOINT_NAMES, SIDES, STRIKE_TYPE_TO_JOINT, STRIKE_TYPES
+from .detections import Detections
+from .features import get_joint_speed, get_pixel_to_meter_ratio
+from .tracking import PersonState
 
 strike_config = StrikeConfig()
 
@@ -12,9 +15,12 @@ class StrikingStats:
     total_strikes: int
     strike_counts: dict[str, float]
     strike_rates: dict[str, float]
-    max_speeds: dict[str, float]
+    max_speeds_mps: dict[str, float]
     combo_count: int
     rhythm_cv: float
+    pacing_bins: dict[float, int]
+    strike_speeds: dict[str, np.ndarray]
+    strike_times_s: dict[str, np.ndarray]
     
 
 class StrikingStatsCalculator:
@@ -25,10 +31,12 @@ class StrikingStatsCalculator:
         self.n_frames = detections.n_frames
 
         self.strike_records = detections.to_records(fps=self.fps)
-        self.strike_frame_idx = self.get_strike_frame_idx()
+        self.strike_frames = self.get_strike_frames()
         self.joint_speeds = self.get_joint_speeds()
 
         self.strike_counts = self.get_strike_count()
+        self.m_per_pixel = self.get_metres_per_pixel()
+        self.strike_speeds = self.get_strike_speeds()
         self.max_speeds = self.get_max_speeds()
         self.combo_count = self.get_combo_count()
 
@@ -53,9 +61,12 @@ class StrikingStatsCalculator:
             total_strikes=self.get_total_strikes(),
             strike_counts=self.strike_counts,
             strike_rates=self.get_strike_rate(),
-            max_speeds=self.max_speeds,
+            max_speeds_mps=self.max_speeds,
             combo_count=self.combo_count,
-            rhythm_cv=self.get_striking_rhythm()
+            rhythm_cv=self.get_striking_rhythm(),
+            pacing_bins=self.get_pacing_bins(),
+            strike_speeds=self.strike_speeds,
+            strike_times_s=self.get_strike_times(),
         )
 
 
@@ -63,7 +74,7 @@ class StrikingStatsCalculator:
     # Data
     # ============================================================
 
-    def get_strike_frame_idx(self) -> np.ndarray:
+    def get_strike_frames(self) -> np.ndarray:
         """
         Get the frame indexes where strikes occur.
 
@@ -71,9 +82,34 @@ class StrikingStatsCalculator:
             Numpy array containing the frame indexes of each strike.
         """
         return np.array(
-            [record["frame"] for record in self.strike_records],
-            dtype=int
+            [record["frame"] for record in self.strike_records]
         )
+
+    def get_strike_times(self) -> dict[str, np.ndarray]:
+        """
+        Get the times at which strikes of each type occur.
+
+        Returns:
+            Dictionary containing the time of each strike in seconds,
+            for each strike type.
+        """
+        strike_times = {
+            f"{side}_{strike_type}": []
+            for side in ("left", "right")
+            for strike_type in STRIKE_TYPES
+        }
+
+        for record in self.strike_records:
+            side = record["side"]
+            strike_type = record["strike_type"]
+
+            strike_name = f"{side}_{strike_type}"
+            strike_times[strike_name].append(record["time_s"])
+
+        return {
+            strike_name: np.array(times, dtype=float)
+            for strike_name, times in strike_times.items()
+        }
 
     def get_joint_speeds(self) -> dict[str, np.ndarray]:
         """
@@ -91,6 +127,20 @@ class StrikingStatsCalculator:
             for side in SIDES
             for joint in JOINT_NAMES
         }
+
+    def get_metres_per_pixel(self) -> float:
+        """
+        Get the conversion ratio from pixels to metres for the video.
+
+        The ratio is estimated by the median fighter's torso length
+        from all frames.
+
+        Returns:
+            The number of metres a single pixel represents.
+        """
+        ratios = get_pixel_to_meter_ratio(self.person_state)
+
+        return float(np.nanmedian(ratios))
 
     # ============================================================
     # Strike statistics
@@ -118,7 +168,7 @@ class StrikingStatsCalculator:
 
         return strike_counts
 
-    def get_strike_rate(self) -> np.ndarray:
+    def get_strike_rate(self) -> dict[str, float]:
         """
         Get the rate at which strikes occur.
 
@@ -148,42 +198,68 @@ class StrikingStatsCalculator:
         for strike_type, count in self.strike_counts.items():
             total += count
 
-        return total
+        return int(total)
+
+    def get_strike_speeds(self) -> dict[str, np.ndarray]:
+        """
+        Get the peak speed of every strike type.
+
+        Strikes that could not be detected are NaN.
+
+        Returns:
+            Dictionary containing the peak speed of each strike in
+            metres per second, for each strike type.
+        """
+        window = int(self.fps // 3)
+        strike_speeds = {
+            f"{side}_{strike_type}": []
+            for side in ("left", "right")
+            for strike_type in STRIKE_TYPES
+        }
+
+        for record in self.strike_records:
+            side = record["side"]
+            strike_type = record["strike_type"]
+
+            strike_name = f"{side}_{strike_type}"
+            start_frame = record["frame"]
+            joint = f"{side}_{STRIKE_TYPE_TO_JOINT[strike_type]}"
+
+            speeds = self.joint_speeds[joint][start_frame:start_frame + window]
+
+            # Skip NaN values
+            if not np.isfinite(speeds).any():
+                strike_speeds[strike_name].append(np.nan)
+                continue
+
+            strike_speeds[strike_name].append(
+                float(np.nanmax(speeds) * self.m_per_pixel)
+            )
+
+        return {
+            strike_name: np.array(speeds, dtype=float)
+            for strike_name, speeds in strike_speeds.items()
+        }
 
     def get_max_speeds(self) -> dict[str, float]:
         """
         Get the maximum speed recorded for each strike type.
 
         Returns:
-            Dictionary containing the maximum speed of each strike type.
+            Dictionary containing the maximum speed of each strike type
+            in metres per second.
         """
-        max_speeds = {
-            f"{side}_{strike_type}": 0.0
-            for side in ("left", "right")
-            for strike_type in STRIKE_TYPES
-        }
+        max_speeds = {}
 
-        window = self.fps // 3
+        for strike_name, speeds in self.strike_speeds.items():
+            # Strike types that were never detected
+            if not np.isfinite(speeds).any():
+                max_speeds[strike_name] = 0.0
+                continue
 
-        for record in self.strike_records:
-            side = record["side"]
-            strike_type = record["strike_type"]
-            strike_name = f"{side}_{strike_type}"
-
-            start_frame = record["frame"]
-            joint = f"{side}_wrist"
-
-            current_max_speed = np.max(
-                self.joint_speeds[joint][start_frame:start_frame + window]
-            )
-
-            max_speeds[strike_name] = max(
-                current_max_speed,
-                max_speeds[strike_name]
-            )
+            max_speeds[strike_name] = float(np.nanmax(speeds))
 
         return max_speeds
-
 
     def get_striking_rhythm(self) -> float:
         """
@@ -195,15 +271,49 @@ class StrikingStatsCalculator:
         Returns:
             Coefficient of variation of the time intervals between strikes
         """
-        frame_idx_diff = np.diff(self.strike_frame_idx)
-        time_intervals_between_strikes_s = frame_idx_diff / self.fps
+        frame_diff = np.diff(self.strike_frames)
+        time_intervals_between_strikes_s = frame_diff / self.fps
         time_intervals_between_strikes_s = time_intervals_between_strikes_s[time_intervals_between_strikes_s != 0]
+
+        if len(time_intervals_between_strikes_s) < 2:
+            return 0.0
 
         std = np.std(time_intervals_between_strikes_s)
         mean = np.mean(time_intervals_between_strikes_s)
         coefficient_of_variation = std / mean
 
-        return coefficient_of_variation
+        return float(coefficient_of_variation)
+
+    def get_pacing_bins(self, bin_size_s: float = 5.0) -> dict[float, int]:
+        """
+        Get the number of strikes thrown in each block of time.
+
+        Splits the video into fixed length bins and counts the strikes
+        during each one
+
+        Args:
+            bin_size_s: Length of each bin in seconds.
+
+        Returns:
+            Dictionary mapping the start time of each bin in seconds to
+            the number of strikes thrown during it.
+        """
+        duration_s = self.n_frames / self.fps
+
+        if duration_s <= 0:
+            return {}
+
+        edges = np.arange(0.0, duration_s + bin_size_s, bin_size_s)
+
+        counts, _ = np.histogram(
+            self.strike_frames / self.fps,
+            bins=edges
+        )
+
+        return {
+            float(start): int(count)
+            for start, count in zip(edges[:-1], counts)
+        }
 
     # ============================================================
     # Combo statistics
@@ -217,13 +327,7 @@ class StrikingStatsCalculator:
             Numpy boolean array indicating whether consecutive strikes
             occur close enough together to be considered part of a combo.
         """
-        if len(self.strike_frame_idx) < 2:
-            return np.array([], dtype=bool)
-
-        return (
-            self.strike_frame_idx[1:] - self.strike_frame_idx[:-1]
-            <= self.fps // 3
-        )
+        return self.detections.combo_mask(self.fps)
 
     def get_combo_count(self) -> int:
         """
@@ -232,12 +336,7 @@ class StrikingStatsCalculator:
         Returns:
             The number of combos detected.
         """
-        mask = self.get_combo_mask()
-
-        return count_segments(
-            mask,
-            min_length=2
-        )
+        return self.detections.combo_count(self.fps)
 
     def get_combo_frame_idx(self) -> np.ndarray:
         """
@@ -247,19 +346,4 @@ class StrikingStatsCalculator:
             Numpy array containing the frame indexes where strikes
             that are part of a combo occur.
         """
-        mask = self.get_combo_mask()
-
-        if len(mask) == 0:
-            return np.array([], dtype=int)
-
-        # Make new mask to be the same size as strike_frame_idx
-        combo_mask = np.full(
-            len(self.strike_frame_idx),
-            False,
-            dtype=bool
-        )
-
-        combo_mask[:-1] |= mask
-        combo_mask[1:] |= mask
-
-        return self.strike_frame_idx[combo_mask]
+        return self.detections.combo_frames(self.fps)

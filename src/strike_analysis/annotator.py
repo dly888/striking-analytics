@@ -18,7 +18,9 @@ class VideoAnnotator:
     """
 
     def __init__(self, config: Config = Config()):
-        self.person_detections: list[tuple[PersonState, Detections]] = []
+        self.person_detections: list[
+            tuple[PersonState, Detections, np.ndarray]
+        ] = []
         self.config = config
 
     def add_tracker(self, states: PersonState, detections: Detections):
@@ -30,20 +32,35 @@ class VideoAnnotator:
             detections: Detections object
         """
 
-        self.person_detections.append((states, detections.expanded()))
+        self.person_detections.append(
+            (
+                states,
+                detections.expanded(),
+                detections.combo_frame_mask(states.fps),
+            )
+        )
 
     @staticmethod
     def annotate_frame(
-        person_state: PersonState, detections: Detections, frame, frame_idx: int
+        person_state: PersonState,
+        detections: Detections,
+        frame,
+        frame_idx: int,
+        combo_frame_mask: np.ndarray | None = None,
     ):
         """
         Annotates a single frame.
+
+        Draws the ID box, strike detection, current frame index, combo
+        label, and skeleton.
 
         Args:
             person_state: PersonTrack object
             detections: Detections object
             frame: OpenCV frame to be annotated on
             frame_idx: The index in which the frame appears in the video
+            combo_frame_mask: Boolean array with one entry per frame,
+                True on the frames a combo is thrown on.
         """
 
         box = person_state.boxes[frame_idx]
@@ -90,7 +107,21 @@ class VideoAnnotator:
                 2,
             )
 
+        # Output combo label
+        if combo_frame_mask is not None and combo_frame_mask[frame_idx]:
+            cv2.putText(
+                frame,
+                "COMBO",
+                (x1, y2 + 40),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                1.2,
+                (0, 255, 255),
+                3,
+            )
+
         VideoAnnotator.draw_skeleton(person_state, frame, frame_idx)
+
+    
 
     @staticmethod
     def draw_skeleton(person_state: PersonState, frame, frame_idx: int):
@@ -159,7 +190,7 @@ class VideoAnnotator:
                 if not success:
                     break
 
-                for track, detections in self.person_detections:
+                for track, detections, combo_frame_mask in self.person_detections:
                     if frame_idx >= track.frames_processed:
                         continue
 
@@ -168,6 +199,7 @@ class VideoAnnotator:
                         detections=detections,
                         frame=frame,
                         frame_idx=frame_idx,
+                        combo_frame_mask=combo_frame_mask,
                     )
 
                 writer.write(frame)
