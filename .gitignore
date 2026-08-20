@@ -1,0 +1,31 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+
+# Environments and tool caches
+.venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Model weights
+*.pt
+*.onnx
+
+# Generated outputs
+outputs/
+*.mp4
+*.webm
+*.avi
+*.mov
+
+# Pose/feature cache
+cache/*
+!cache/.gitkeep
+
+# Editors / tooling
+.idea/dictionaries/
+.claude/
