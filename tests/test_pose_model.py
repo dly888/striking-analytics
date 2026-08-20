@@ -48,7 +48,7 @@ def test_get_joint_speed_realistic_track(get_wrist_velocities_test_data,
 
     state = make_person_state(keypoints=keypoints)
 
-    speeds = get_joint_speed(state, "right_wrist", config=StrikeConfig())
+    speeds = get_joint_speed(state, "right_wrist", strike_config=StrikeConfig())
 
     # Visible frames with a valid previous frame
     np.testing.assert_allclose(speeds[1], np.hypot(5, 5) * 30)

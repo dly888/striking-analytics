@@ -10,7 +10,7 @@ from .geometry import calculate_angles
 from .tracking import PersonState
 
 
-def get_joint_speed(state: PersonState, joint_name: str, config: StrikeConfig) -> np.ndarray:
+def get_joint_speed(state: PersonState, joint_name: str, strike_config: StrikeConfig) -> np.ndarray:
     """Calculate the speed of a joint in pixels per second.
 
     Missing keypoint detections handled by using the most recent valid
@@ -21,7 +21,7 @@ def get_joint_speed(state: PersonState, joint_name: str, config: StrikeConfig) -
     Args:
         state: PersonTrack object
         joint_name: Name of the joint/keypoint
-        config: Config object
+        strike_config: Config object
 
     Returns:
         Numpy array containing the joint speed for each frame.
@@ -47,7 +47,7 @@ def get_joint_speed(state: PersonState, joint_name: str, config: StrikeConfig) -
 
     gap = frames - previous
 
-    measurable = visible & (previous >= 0) & (gap <= config.max_hold + 1)
+    measurable = visible & (previous >= 0) & (gap <= strike_config.max_hold + 1)
 
     speed = np.full(len(xy), np.nan)
 

@@ -38,6 +38,20 @@ KEYPOINT_NAMES: tuple[str, ...] = (
 KEYPOINT_INDEX: dict[str, int] = {name: i for i, name in enumerate(KEYPOINT_NAMES)}
 N_KEYPOINTS = len(KEYPOINT_NAMES)
 
+# Joints that exist on both sides, ordered to match KEYPOINT_NAMES.
+# Combine with SIDES as f"{side}_{joint}" to rebuild the sided keypoint
+# names. "nose" is excluded since it has no side.
+JOINT_NAMES: tuple[str, ...] = (
+    "eye",
+    "ear",
+    "shoulder",
+    "elbow",
+    "wrist",
+    "hip",
+    "knee",
+    "ankle",
+)
+
 SKELETON_EDGES: tuple[tuple[str, str], ...] = (
     ("left_shoulder", "right_shoulder"),
     ("left_shoulder", "left_elbow"),

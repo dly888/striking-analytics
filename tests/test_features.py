@@ -69,7 +69,7 @@ def test_get_joint_speed_constant_velocity(make_person_state: Callable,
         conf=full_confidence_box
     )
 
-    speeds = get_joint_speed(state, "right_wrist", config=StrikeConfig())
+    speeds = get_joint_speed(state, "right_wrist", strike_config=StrikeConfig())
 
     np.testing.assert_allclose(speeds[1:], 30)
 
@@ -79,7 +79,7 @@ def test_get_joint_speed_all_nan_xy(make_person_state: Callable,
 
     state = make_person_state(keypoints=all_nan_xy_keypoints)
 
-    speeds = get_joint_speed(state, "right_wrist", config=StrikeConfig())
+    speeds = get_joint_speed(state, "right_wrist", strike_config=StrikeConfig())
 
     assert np.isnan(speeds).all()
 
@@ -90,7 +90,7 @@ def test_get_joint_speed_ignores_confidence(make_person_state: Callable,
     # looks at the xy positions
     state = make_person_state(keypoints=all_nan_conf_keypoints)
 
-    speeds = get_joint_speed(state, "right_wrist", config=StrikeConfig())
+    speeds = get_joint_speed(state, "right_wrist", strike_config=StrikeConfig())
 
     np.testing.assert_allclose(speeds[1:], 0)
 
@@ -104,7 +104,7 @@ def test_get_joint_speed_bridges_short_gap(make_person_state: Callable,
 
     state = make_person_state(keypoints=keypoints)
 
-    speeds = get_joint_speed(state, "right_wrist", config=StrikeConfig())
+    speeds = get_joint_speed(state, "right_wrist", strike_config=StrikeConfig())
 
     assert np.isnan(speeds[10:13]).all()
     np.testing.assert_allclose(speeds[13], 30)
@@ -118,7 +118,7 @@ def test_get_joint_speed_long_gap_returns_nan(make_person_state: Callable,
 
     state = make_person_state(keypoints=keypoints)
 
-    speeds = get_joint_speed(state, "right_wrist", config=StrikeConfig())
+    speeds = get_joint_speed(state, "right_wrist", strike_config=StrikeConfig())
 
     assert np.isnan(speeds[28])
     np.testing.assert_allclose(speeds[29], 30)

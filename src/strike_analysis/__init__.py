@@ -2,6 +2,7 @@ from .annotator import VideoAnnotator
 from .cache import TrackCache
 from .config import Config, StrikeConfig
 from .constants import (
+    JOINT_NAMES,
     KEYPOINT_INDEX,
     KEYPOINT_NAMES,
     N_KEYPOINTS,
@@ -31,6 +32,7 @@ __all__ = [
     "SIDES",
     "STRIKE_TYPES",
     "AnalysisResult",
+    "JOINT_NAMES",
     "KEYPOINT_INDEX",
     "KEYPOINT_NAMES",
     "N_KEYPOINTS",
