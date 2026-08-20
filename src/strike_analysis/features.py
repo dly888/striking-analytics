@@ -10,7 +10,9 @@ from .geometry import calculate_angles
 from .tracking import PersonState
 
 
-def get_joint_speed(state: PersonState, joint_name: str, strike_config: StrikeConfig) -> np.ndarray:
+def get_joint_speed(
+    state: PersonState, joint_name: str, strike_config: StrikeConfig
+) -> np.ndarray:
     """Calculate the speed of a joint in pixels per second.
 
     Missing keypoint detections handled by using the most recent valid
@@ -60,7 +62,10 @@ def get_joint_speed(state: PersonState, joint_name: str, strike_config: StrikeCo
 
     return speed
 
-def get_joint_speed_peaks(speed: np.ndarray, threshold: np.ndarray, max_speed: np.ndarray) -> ndarray:
+
+def get_joint_speed_peaks(
+    speed: np.ndarray, threshold: np.ndarray, max_speed: np.ndarray
+) -> ndarray:
     """
     Gets the peak values of the joint speeds tracked.
 
@@ -83,7 +88,9 @@ def get_joint_speed_peaks(speed: np.ndarray, threshold: np.ndarray, max_speed: n
     return peaks[valid]
 
 
-def get_joint_rise_speed(state: PersonState, name: str, config: StrikeConfig) -> np.ndarray:
+def get_joint_rise_speed(
+    state: PersonState, name: str, config: StrikeConfig
+) -> np.ndarray:
     """Calculate the upward speed of a joint in pixels per second.
 
     Upward movement is positive since image y grows downward. Missing

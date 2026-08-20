@@ -1,11 +1,20 @@
 from collections.abc import Callable
 
-import pytest
 import numpy as np
+import pytest
 
-from strike_analysis import StrikeConfig, calculate_angles, get_joint_speed, get_pixel_to_meter_ratio, get_speed_threshold
+from strike_analysis import (
+    StrikeConfig,
+    calculate_angles,
+    get_joint_speed,
+    get_pixel_to_meter_ratio,
+    get_speed_threshold,
+)
 from strike_analysis.constants import KEYPOINT_INDEX
-from strike_analysis.features import get_arm_sweep_speed, get_joint_rise_speed, get_joint_speed_peaks
+from strike_analysis.features import (
+    get_arm_sweep_speed,
+    get_joint_speed_peaks,
+)
 
 
 @pytest.fixture()
@@ -58,15 +67,17 @@ def standing_keypoints():
     return keypoints
 
 
-def test_get_joint_speed_constant_velocity(make_person_state: Callable,
-                                           constant_boxes: np.ndarray,
-                                           full_confidence_box: np.ndarray,
-                                           constant_speed_keypoints: np.ndarray):
+def test_get_joint_speed_constant_velocity(
+    make_person_state: Callable,
+    constant_boxes: np.ndarray,
+    full_confidence_box: np.ndarray,
+    constant_speed_keypoints: np.ndarray,
+):
 
     state = make_person_state(
         keypoints=constant_speed_keypoints,
         boxes=constant_boxes,
-        conf=full_confidence_box
+        conf=full_confidence_box,
     )
 
     speeds = get_joint_speed(state, "right_wrist", strike_config=StrikeConfig())
@@ -74,8 +85,9 @@ def test_get_joint_speed_constant_velocity(make_person_state: Callable,
     np.testing.assert_allclose(speeds[1:], 30)
 
 
-def test_get_joint_speed_all_nan_xy(make_person_state: Callable,
-                                    all_nan_xy_keypoints: np.ndarray):
+def test_get_joint_speed_all_nan_xy(
+    make_person_state: Callable, all_nan_xy_keypoints: np.ndarray
+):
 
     state = make_person_state(keypoints=all_nan_xy_keypoints)
 
@@ -84,8 +96,9 @@ def test_get_joint_speed_all_nan_xy(make_person_state: Callable,
     assert np.isnan(speeds).all()
 
 
-def test_get_joint_speed_ignores_confidence(make_person_state: Callable,
-                                            all_nan_conf_keypoints: np.ndarray):
+def test_get_joint_speed_ignores_confidence(
+    make_person_state: Callable, all_nan_conf_keypoints: np.ndarray
+):
     # Confidence filtering happens in _densify, get_joint_speed only
     # looks at the xy positions
     state = make_person_state(keypoints=all_nan_conf_keypoints)
@@ -95,8 +108,9 @@ def test_get_joint_speed_ignores_confidence(make_person_state: Callable,
     np.testing.assert_allclose(speeds[1:], 0)
 
 
-def test_get_joint_speed_bridges_short_gap(make_person_state: Callable,
-                                           constant_speed_keypoints: np.ndarray):
+def test_get_joint_speed_bridges_short_gap(
+    make_person_state: Callable, constant_speed_keypoints: np.ndarray
+):
     # A gap within max_hold uses the most recent valid position, so the
     # speed averaged over the gap matches the constant velocity
     keypoints = constant_speed_keypoints.copy()
@@ -110,8 +124,9 @@ def test_get_joint_speed_bridges_short_gap(make_person_state: Callable,
     np.testing.assert_allclose(speeds[13], 30)
 
 
-def test_get_joint_speed_long_gap_returns_nan(make_person_state: Callable,
-                                              constant_speed_keypoints: np.ndarray):
+def test_get_joint_speed_long_gap_returns_nan(
+    make_person_state: Callable, constant_speed_keypoints: np.ndarray
+):
     # A gap longer than max_hold can't be measured accurately
     keypoints = constant_speed_keypoints.copy()
     keypoints[20:28, :, :2] = np.nan
@@ -218,8 +233,9 @@ def test_get_arm_sweep_speed_outward_negative(make_person_state: Callable):
     np.testing.assert_allclose(sweep[10:14], -600, atol=1e-6)
 
 
-def test_get_pixel_to_meter_ratio(make_person_state: Callable,
-                                  standing_keypoints: np.ndarray):
+def test_get_pixel_to_meter_ratio(
+    make_person_state: Callable, standing_keypoints: np.ndarray
+):
     state = make_person_state(keypoints=standing_keypoints)
 
     ratio = get_pixel_to_meter_ratio(state)
@@ -227,8 +243,9 @@ def test_get_pixel_to_meter_ratio(make_person_state: Callable,
     np.testing.assert_allclose(ratio, 0.0027)
 
 
-def test_get_speed_threshold_scales_with_speed(make_person_state: Callable,
-                                               standing_keypoints: np.ndarray):
+def test_get_speed_threshold_scales_with_speed(
+    make_person_state: Callable, standing_keypoints: np.ndarray
+):
     state = make_person_state(keypoints=standing_keypoints)
 
     thresholds = get_speed_threshold(state, 3.5)

@@ -1,12 +1,11 @@
-from pathlib import Path
 import tempfile
+from pathlib import Path
 
 import cv2
 import numpy as np
 import pandas as pd
 import streamlit as st
 from PIL import Image
-from pygments.styles import stata_dark
 from streamlit.runtime import stats
 from streamlit_image_coordinates import streamlit_image_coordinates
 
@@ -37,12 +36,14 @@ def build_strike_table(stats: sa.StrikingStats) -> pd.DataFrame:
         for strike_type in sa.STRIKE_TYPES:
             key = f"{side}_{strike_type}"
 
-            rows.append({
-                "Strike": f"{side.title()} {strike_type}",
-                "Count": int(stats.strike_counts[key]),
-                "Per sec": round(stats.strike_rates[key], 1),
-                "Max speed (m/s)": round(stats.max_speeds_mps[key], 1),
-            })
+            rows.append(
+                {
+                    "Strike": f"{side.title()} {strike_type}",
+                    "Count": int(stats.strike_counts[key]),
+                    "Per sec": round(stats.strike_rates[key], 1),
+                    "Max speed (m/s)": round(stats.max_speeds_mps[key], 1),
+                }
+            )
 
     return pd.DataFrame(rows)
 
@@ -121,7 +122,6 @@ person = sa.Person(
 # ============================================================
 
 if st.button("Analyse"):
-
     if video is None:
         st.error("Please upload a video.")
         st.stop()
@@ -155,18 +155,11 @@ if st.button("Analyse"):
         n_frames: int,
     ) -> None:
 
-        fraction = (
-            frames_processed / n_frames
-            if n_frames
-            else 0.0
-        )
+        fraction = frames_processed / n_frames if n_frames else 0.0
 
         progress.progress(
             min(fraction, 1.0),
-            text=(
-                f"Tracking fighter: "
-                f"{frames_processed}/{n_frames} frames"
-            ),
+            text=(f"Tracking fighter: {frames_processed}/{n_frames} frames"),
         )
 
     # --------------------------------------------------------
@@ -201,10 +194,7 @@ if st.button("Analyse"):
     # Render annotated video
     # --------------------------------------------------------
 
-    annotated_video_path = (
-        video_path.parent
-        / f"annotated_{video_path.name}"
-    )
+    annotated_video_path = video_path.parent / f"annotated_{video_path.name}"
 
     sa.render_annotated_video(
         result=result,
@@ -248,9 +238,7 @@ if st.button("Analyse"):
     st.session_state["stats"] = stats
     st.session_state["video_path"] = video_path
     st.session_state["frame"] = frame
-    st.session_state["annotated_video_path"] = (
-        annotated_video_path
-    )
+    st.session_state["annotated_video_path"] = annotated_video_path
 
     # Reset floor selection when a new analysis is performed
     st.session_state.pop("floor_points", None)
@@ -262,7 +250,6 @@ if st.button("Analyse"):
 # ============================================================
 
 if "result" in st.session_state:
-
     st.subheader("Select floor edges")
 
     st.write(
@@ -278,21 +265,14 @@ if "result" in st.session_state:
 
     display_frame = Image.fromarray(frame)
 
-    display_height = int(
-        frame.shape[0]
-        * DISPLAY_WIDTH
-        / frame.shape[1]
-    )
+    display_height = int(frame.shape[0] * DISPLAY_WIDTH / frame.shape[1])
 
-    display_frame = display_frame.resize(
-        (DISPLAY_WIDTH, display_height)
-    )
+    display_frame = display_frame.resize((DISPLAY_WIDTH, display_height))
 
     value = streamlit_image_coordinates(
         display_frame,
         key="floor",
     )
-
 
     if st.button("Clear points"):
         st.session_state.pop("floor_points", None)
@@ -306,7 +286,6 @@ if "result" in st.session_state:
     if "floor_points" not in st.session_state:
         st.session_state.floor_points = []
 
-
     if value is not None:
         scale_x = frame.shape[1] / value["width"]
         scale_y = frame.shape[0] / value["height"]
@@ -314,7 +293,7 @@ if "result" in st.session_state:
         point = (value["x"] * scale_x, value["y"] * scale_y)
 
         if not st.session_state.floor_points or (
-                point != st.session_state.floor_points[-1]
+            point != st.session_state.floor_points[-1]
         ):
             st.session_state.floor_points.append(point)
 
@@ -325,7 +304,6 @@ if "result" in st.session_state:
     for i, point in enumerate(points, start=1):
         st.write(f"Point {i}: {point}")
 
-
     # ----------------------------------------------------
     # Create footwork analyser
     # ----------------------------------------------------
@@ -334,31 +312,21 @@ if "result" in st.session_state:
         edge1 = (points[0], points[1])
         edge2 = (points[2], points[3])
 
-
-        footwork_analyser = sa.FootworkAnalyser(
-            st.session_state["result"].person_state
-        )
+        footwork_analyser = sa.FootworkAnalyser(st.session_state["result"].person_state)
 
         footwork_analyser.select_floor(
             edge1=edge1,
             edge2=edge2,
         )
 
-        st.session_state["footwork_analyser"] = (
-            footwork_analyser
-        )
+        st.session_state["footwork_analyser"] = footwork_analyser
 
         st.success("Floor selected.")
 
     else:
-        st.info(
-            f"Select {4 - len(points)} more point(s)."
-        )
+        st.info(f"Select {4 - len(points)} more point(s).")
 else:
-
-    st.info(
-        "Draw two lines along the floor edges."
-    )
+    st.info("Draw two lines along the floor edges.")
 
 
 # ============================================================
@@ -366,31 +334,21 @@ else:
 # ============================================================
 
 if "annotated_video_path" in st.session_state:
-
-    annotated_video_path = (
-        st.session_state["annotated_video_path"]
-    )
+    annotated_video_path = st.session_state["annotated_video_path"]
 
     if annotated_video_path.exists():
-
         st.subheader("Analysis")
 
-        st.video(
-            str(annotated_video_path)
-        )
+        st.video(str(annotated_video_path))
 
     else:
-
-        st.error(
-            "Annotated video was not rendered."
-        )
+        st.error("Annotated video was not rendered.")
 
 # ============================================================
 # Striking Stats
 # ============================================================
 
 if "stats" in st.session_state:
-
     stats = st.session_state["stats"]
 
     st.subheader("Striking Stats")
@@ -436,9 +394,7 @@ if "stats" in st.session_state:
         }
     )
 
-    st.caption(
-        f"Strikes thrown per {PACING_BIN_S:.0f} second block"
-    )
+    st.caption(f"Strikes thrown per {PACING_BIN_S:.0f} second block")
 
     st.bar_chart(
         pacing,
@@ -450,9 +406,7 @@ if "stats" in st.session_state:
     # Fatigue over time
     # --------------------------------------------------------
 
-    st.caption(
-        "Peak speed of every strike thrown."
-    )
+    st.caption("Peak speed of every strike thrown.")
 
     thrown = [
         strike_name
@@ -461,10 +415,7 @@ if "stats" in st.session_state:
     ]
 
     if thrown:
-        labels = [
-            strike_name.replace("_", " ").capitalize()
-            for strike_name in thrown
-        ]
+        labels = [strike_name.replace("_", " ").capitalize() for strike_name in thrown]
 
         for tab, strike_name in zip(st.tabs(labels), thrown):
             fatigue = pd.DataFrame(
@@ -487,12 +438,8 @@ if "stats" in st.session_state:
 # ============================================================
 
 if "footwork_analyser" in st.session_state:
-
     st.subheader("Footwork Analysis")
 
-    fig = (
-        st.session_state["footwork_analyser"]
-        .get_plot_figure()
-    )
+    fig = st.session_state["footwork_analyser"].get_plot_figure()
 
     st.pyplot(fig)

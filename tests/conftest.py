@@ -19,12 +19,19 @@ def make_person_state():
             conf = np.full(shape=n_frames, fill_value=1.0)
 
         person = Person(
-            name="test", wingspan_m=1.80, weight=71,
-            stance="orthodox", height_m=1.80,
+            name="test",
+            wingspan_m=1.80,
+            weight=71,
+            stance="orthodox",
+            height_m=1.80,
         )
         return PersonState(
-            track_id=1, keypoints=keypoints, boxes=boxes,
-            box_conf=conf, fps=30, person=person,
+            track_id=1,
+            keypoints=keypoints,
+            boxes=boxes,
+            box_conf=conf,
+            fps=30,
+            person=person,
         )
 
     return _make

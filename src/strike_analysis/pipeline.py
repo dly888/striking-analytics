@@ -32,8 +32,8 @@ def analyse_video(
     person: Person,
     cache_path: Path,
     model: str,
-    config: Config = Config(),
-    strike_config: StrikeConfig = StrikeConfig(),
+    config: Config,
+    strike_config: StrikeConfig,
     track_progress: Callable[[int, int], None] | None = None,
 ) -> AnalysisResult:
     """
@@ -85,7 +85,7 @@ def render_annotated_video(
     result: AnalysisResult,
     video_path: Path,
     output_path: Path,
-    config: Config = Config(),
+    config: Config,
 ) -> None:
     """
     Creates video with the tracking and strikes drawn on it.

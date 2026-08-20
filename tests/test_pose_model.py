@@ -1,5 +1,5 @@
-import pytest
 import numpy as np
+import pytest
 
 from strike_analysis import StrikeConfig, get_joint_speed
 from strike_analysis.constants import KEYPOINT_INDEX
@@ -34,8 +34,9 @@ def get_wrist_velocities_test_data() -> list[tuple]:
     return TEST_WRIST_TRACK
 
 
-def test_get_joint_speed_realistic_track(get_wrist_velocities_test_data,
-                                         make_person_state):
+def test_get_joint_speed_realistic_track(
+    get_wrist_velocities_test_data, make_person_state
+):
     # Low confidence detections are NaN'd like _densify does, leaving an
     # 8 frame gap that is longer than max_hold and a 2 frame gap that isn't
     track = np.array(get_wrist_velocities_test_data)

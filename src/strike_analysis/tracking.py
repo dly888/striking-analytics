@@ -4,14 +4,15 @@ from collections import defaultdict
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-import cv2
 
+import cv2
 import numpy as np
 from ultralytics import YOLO
 
 from .config import Config
 from .constants import KEYPOINT_INDEX, N_KEYPOINTS, Stance
 from .video import get_fps
+
 
 def smooth_keypoints(
     keypoints: np.ndarray,
@@ -118,10 +119,7 @@ class PoseTracker:
     """
 
     def __init__(
-        self,
-        person: Person,
-        model_name: str = "yolo26s-pose.pt",
-        config: Config = Config(),
+        self, person: Person, config: Config, model_name: str = "yolo26s-pose.pt"
     ):
         self.person_states: dict[int, PersonState] = {}
         self.model = YOLO(model_name)
@@ -144,7 +142,7 @@ class PoseTracker:
                 "No persons has been tracked yet. Please run get_person_tracker to track."
             )
 
-        for _, person_state in self.person_states.items():
+        for person_state in self.person_states.values():
             if person_state.person == person:
                 return person_state
         raise ValueError("Person not tracked.")

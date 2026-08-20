@@ -17,10 +17,8 @@ class VideoAnnotator:
     Annotates a video using data tracked by the model.
     """
 
-    def __init__(self, config: Config = Config()):
-        self.person_detections: list[
-            tuple[PersonState, Detections, np.ndarray]
-        ] = []
+    def __init__(self, config: Config):
+        self.person_detections: list[tuple[PersonState, Detections, np.ndarray]] = []
         self.config = config
 
     def add_tracker(self, states: PersonState, detections: Detections):
@@ -94,7 +92,6 @@ class VideoAnnotator:
             2,
         )
 
-
         # Output name of strike detected
         for row, strike in enumerate(detections.active_at(frame_idx)):
             cv2.putText(
@@ -120,8 +117,6 @@ class VideoAnnotator:
             )
 
         VideoAnnotator.draw_skeleton(person_state, frame, frame_idx)
-
-    
 
     @staticmethod
     def draw_skeleton(person_state: PersonState, frame, frame_idx: int):

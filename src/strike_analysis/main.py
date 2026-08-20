@@ -13,17 +13,17 @@ from .tracking import Person
 
 
 def main(
-        video_path: Path,
-        person: Person,
-        root: Path,
-        cache_path: Path,
-        floor_edge1: list[tuple[float, float]],
-        floor_edge2: list[tuple[float, float]],
-        model: str = "yolo26s-pose.pt",
-        config: Config = Config(),
-        strike_config: StrikeConfig = StrikeConfig(),
-        annotate: bool = False,
-        debug: bool = False,
+    video_path: Path,
+    person: Person,
+    root: Path,
+    cache_path: Path,
+    floor_edge1: list[tuple[float, float]],
+    floor_edge2: list[tuple[float, float]],
+    config: Config,
+    strike_config: StrikeConfig,
+    model: str = "yolo26s-pose.pt",
+    annotate: bool = False,
+    debug: bool = False,
 ) -> None:
     """
     Analyses a video and reports the strikes and footwork it found.

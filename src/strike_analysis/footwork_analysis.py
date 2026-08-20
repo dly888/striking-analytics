@@ -1,6 +1,6 @@
-import numpy as np
 import cv2
 import matplotlib.pyplot as plt
+import numpy as np
 import seaborn as sns
 from matplotlib.lines import Line2D
 from scipy.ndimage import gaussian_filter
@@ -57,14 +57,11 @@ class FootworkAnalyser:
         if self.floor_corners is None:
             raise ValueError("Please select the floor first.")
 
-        unit_corners = np.array([
-            [0,0],
-            [1, 0],
-            [1, 1],
-            [0, 1]
-        ])
+        unit_corners = np.array([[0, 0], [1, 0], [1, 1], [0, 1]])
 
-        H, H_mask = cv2.findHomography(srcPoints=self.floor_corners, dstPoints=unit_corners)
+        H, H_mask = cv2.findHomography(
+            srcPoints=self.floor_corners, dstPoints=unit_corners
+        )
         self.homography = H
         self.homography_mask = H_mask
 
@@ -89,8 +86,7 @@ class FootworkAnalyser:
         # Ignore keypoints that are NaN, perspectiveTransform cant take NaN values
         if visible.any():
             mapped[visible] = cv2.perspectiveTransform(
-                points[visible][None],
-                self.homography
+                points[visible][None], self.homography
             )[0]
 
         return mapped
@@ -119,14 +115,10 @@ class FootworkAnalyser:
         points = points[np.isfinite(points).all(axis=1)]
 
         counts, _, _ = np.histogram2d(
-            points[:, 0],
-            points[:, 1],
-            bins=bins,
-            range=[[0, 1], [0, 1]]
+            points[:, 0], points[:, 1], bins=bins, range=[[0, 1], [0, 1]]
         )
 
         return counts
-
 
     def outline_feet(self, ax, left, right, bins, smoothing):
         """

@@ -10,6 +10,7 @@ from .tracking import PersonState
 
 strike_config = StrikeConfig()
 
+
 @dataclass(frozen=True)
 class StrikingStats:
     total_strikes: int
@@ -21,7 +22,7 @@ class StrikingStats:
     pacing_bins: dict[float, int]
     strike_speeds: dict[str, np.ndarray]
     strike_times_s: dict[str, np.ndarray]
-    
+
 
 class StrikingStatsCalculator:
     def __init__(self, person_state: PersonState, detections: Detections):
@@ -39,7 +40,6 @@ class StrikingStatsCalculator:
         self.strike_speeds = self.get_strike_speeds()
         self.max_speeds = self.get_max_speeds()
         self.combo_count = self.get_combo_count()
-
 
     # ============================================================
     # Return Stats
@@ -69,7 +69,6 @@ class StrikingStatsCalculator:
             strike_times_s=self.get_strike_times(),
         )
 
-
     # ============================================================
     # Data
     # ============================================================
@@ -81,9 +80,7 @@ class StrikingStatsCalculator:
         Returns:
             Numpy array containing the frame indexes of each strike.
         """
-        return np.array(
-            [record["frame"] for record in self.strike_records]
-        )
+        return np.array([record["frame"] for record in self.strike_records])
 
     def get_strike_times(self) -> dict[str, np.ndarray]:
         """
@@ -122,7 +119,7 @@ class StrikingStatsCalculator:
             f"{side}_{joint}": get_joint_speed(
                 state=self.person_state,
                 joint_name=f"{side}_{joint}",
-                strike_config=strike_config
+                strike_config=strike_config,
             )
             for side in SIDES
             for joint in JOINT_NAMES
@@ -195,7 +192,7 @@ class StrikingStatsCalculator:
             The total number of strikes of all strike types.
         """
         total = 0
-        for strike_type, count in self.strike_counts.items():
+        for count in self.strike_counts.values():
             total += count
 
         return int(total)
@@ -225,7 +222,7 @@ class StrikingStatsCalculator:
             start_frame = record["frame"]
             joint = f"{side}_{STRIKE_TYPE_TO_JOINT[strike_type]}"
 
-            speeds = self.joint_speeds[joint][start_frame:start_frame + window]
+            speeds = self.joint_speeds[joint][start_frame : start_frame + window]
 
             # Skip NaN values
             if not np.isfinite(speeds).any():
@@ -273,7 +270,9 @@ class StrikingStatsCalculator:
         """
         frame_diff = np.diff(self.strike_frames)
         time_intervals_between_strikes_s = frame_diff / self.fps
-        time_intervals_between_strikes_s = time_intervals_between_strikes_s[time_intervals_between_strikes_s != 0]
+        time_intervals_between_strikes_s = time_intervals_between_strikes_s[
+            time_intervals_between_strikes_s != 0
+        ]
 
         if len(time_intervals_between_strikes_s) < 2:
             return 0.0
@@ -305,15 +304,9 @@ class StrikingStatsCalculator:
 
         edges = np.arange(0.0, duration_s + bin_size_s, bin_size_s)
 
-        counts, _ = np.histogram(
-            self.strike_frames / self.fps,
-            bins=edges
-        )
+        counts, _ = np.histogram(self.strike_frames / self.fps, bins=edges)
 
-        return {
-            float(start): int(count)
-            for start, count in zip(edges[:-1], counts)
-        }
+        return {float(start): int(count) for start, count in zip(edges[:-1], counts)}
 
     # ============================================================
     # Combo statistics

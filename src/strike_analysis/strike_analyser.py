@@ -5,14 +5,9 @@ import numpy as np
 from .config import StrikeConfig
 from .constants import SIDES, STRIKE_TYPES
 from .detections import Detections, Strike
+from .detectors import detect_hook, detect_kick, detect_straight, detect_uppercut
 from .features import get_speed_threshold
 from .tracking import PersonState
-from .detectors import (
-    detect_hook,
-    detect_kick,
-    detect_straight,
-    detect_uppercut
-)
 
 DETECTORS = {
     "straight": detect_straight,
@@ -21,13 +16,14 @@ DETECTORS = {
     "kick": detect_kick,
 }
 
+
 class StrikeAnalyser:
-    def __init__(
-            self, track: PersonState, strike_config: StrikeConfig = StrikeConfig()
-    ):
+    def __init__(self, track: PersonState, strike_config: StrikeConfig):
         self.track = track
         self.strike_config = strike_config
-        self.thresholds = get_speed_threshold(track, strike_config.min_straight_speed_mps)
+        self.thresholds = get_speed_threshold(
+            track, strike_config.min_straight_speed_mps
+        )
 
     def get_detections(self) -> Detections:
         """
@@ -37,9 +33,7 @@ class StrikeAnalyser:
             Detection object containing information on when a strike occurs.
         """
         strikes = tuple(
-            Strike(technique, side)
-            for technique in STRIKE_TYPES
-            for side in SIDES
+            Strike(technique, side) for technique in STRIKE_TYPES for side in SIDES
         )
         mask = np.stack(
             [

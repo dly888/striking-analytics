@@ -98,13 +98,13 @@ class VelocityInspector:
                 max(0, frame - 1) : frame + 1,
                 KEYPOINT_INDEX[name],
             ]
-            lines.append(
-                f"{name:16s} {np.array2string(values, precision=1)}"
-            )
+            lines.append(f"{name:16s} {np.array2string(values, precision=1)}")
 
         return "\n".join(lines)
 
-    def print_wrist_speeds(self, left_speed: np.ndarray | None, right_speed: np.ndarray | None):
+    def print_wrist_speeds(
+        self, left_speed: np.ndarray | None, right_speed: np.ndarray | None
+    ):
         for side, speed in (
             ("left", left_speed),
             ("right", right_speed),

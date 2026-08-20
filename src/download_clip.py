@@ -18,7 +18,7 @@ def download_clip():
         url,
     ]
 
-    subprocess.run(command)
+    subprocess.run(command, check=False)
 
 
 if __name__ == "__main__":

@@ -125,10 +125,7 @@ class Detections:
             Numpy array containing the frame index of each strike.
         """
         return np.array(
-            [
-                record["frame"]
-                for record in self.to_records(fps, min_frames)
-            ],
+            [record["frame"] for record in self.to_records(fps, min_frames)],
             dtype=int,
         )
 
@@ -259,12 +256,13 @@ class Detections:
                 if end - start < min_frames:
                     continue
 
-                records.append({
-                    "frame": int(start),
-                    "time_s": float(start / fps),
-                    "strike_type": strike.strike_type,
-                    "side": strike.side,
-                })
+                records.append(
+                    {
+                        "frame": int(start),
+                        "time_s": float(start / fps),
+                        "strike_type": strike.strike_type,
+                        "side": strike.side,
+                    }
+                )
 
         return sorted(records, key=lambda record: record["frame"])
-

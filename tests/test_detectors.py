@@ -68,7 +68,7 @@ def move_keypoint(keypoints, name, start_frame, target, steps):
     direction = np.asarray(target, dtype=float) - origin
 
     for step, t in enumerate(steps):
-        keypoints[start_frame + step:, idx, :2] = origin + t * direction
+        keypoints[start_frame + step :, idx, :2] = origin + t * direction
 
 
 def test_detect_straight_fast_extension(guard_keypoints, make_person_state):
@@ -138,7 +138,9 @@ def test_detect_hook_slow_swing_ignored(guard_keypoints, make_person_state):
     set_hook_arc(guard_keypoints, alphas)
 
     guard_keypoints[:30, KEYPOINT_INDEX["right_elbow"], :2] = (610, 200)
-    move_keypoint(guard_keypoints, "right_elbow", 30, (520, 110), np.linspace(0.1, 1.0, 12))
+    move_keypoint(
+        guard_keypoints, "right_elbow", 30, (520, 110), np.linspace(0.1, 1.0, 12)
+    )
 
     state = make_person_state(keypoints=guard_keypoints)
 
@@ -198,7 +200,9 @@ def test_detect_uppercut_guard_return_ignored(guard_keypoints, make_person_state
     assert not detections.any()
 
 
-def test_straight_takes_priority_over_hook(guard_keypoints, make_person_state, monkeypatch):
+def test_straight_takes_priority_over_hook(
+    guard_keypoints, make_person_state, monkeypatch
+):
     state = make_person_state(keypoints=guard_keypoints)
 
     scripted = {
