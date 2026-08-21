@@ -4,12 +4,12 @@ import numpy as np
 
 from .config import StrikeConfig
 from .constants import SIDES, STRIKE_TYPES
-from .detections import Detections, Strike
-from .detectors import detect_hook, detect_kick, detect_straight, detect_uppercut
+from .strike_detections import StrikeDetections, Strike
+from .strike_detectors import detect_hook, detect_kick, detect_straight, detect_uppercut
 from .features import get_speed_threshold
 from .tracking import PersonState
 
-DETECTORS = {
+STRIKE_DETECTORS = {
     "straight": detect_straight,
     "hook": detect_hook,
     "uppercut": detect_uppercut,
@@ -18,14 +18,14 @@ DETECTORS = {
 
 
 class StrikeAnalyser:
-    def __init__(self, track: PersonState, strike_config: StrikeConfig):
-        self.track = track
+    def __init__(self, person_state: PersonState, strike_config: StrikeConfig):
+        self.track = person_state
         self.strike_config = strike_config
         self.thresholds = get_speed_threshold(
-            track, strike_config.min_straight_speed_mps
+            person_state, strike_config.min_straight_speed_mps
         )
 
-    def get_detections(self) -> Detections:
+    def get_strike_detections(self) -> StrikeDetections:
         """
         Detects strikes for each strike type.
 
@@ -37,7 +37,7 @@ class StrikeAnalyser:
         )
         mask = np.stack(
             [
-                DETECTORS[strike.strike_type](self.track, strike, self.strike_config)
+                STRIKE_DETECTORS[strike.strike_type](self.track, strike, self.strike_config)
                 for strike in strikes
             ]
         ).astype(bool)
@@ -54,4 +54,4 @@ class StrikeAnalyser:
                 )
                 hook_row[window] = False
 
-        return Detections(strikes, mask)
+        return StrikeDetections(strikes, mask)

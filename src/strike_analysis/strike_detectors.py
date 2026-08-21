@@ -3,7 +3,7 @@ from __future__ import annotations
 import numpy as np
 
 from .config import StrikeConfig
-from .detections import Strike
+from .strike_detections import Strike
 from .features import (
     get_arm_sweep_speed,
     get_joint_angle,

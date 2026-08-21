@@ -4,11 +4,9 @@ import numpy as np
 
 from .config import StrikeConfig
 from .constants import JOINT_NAMES, SIDES, STRIKE_TYPE_TO_JOINT, STRIKE_TYPES
-from .detections import Detections
+from .strike_detections import StrikeDetections
 from .features import get_joint_speed, get_pixel_to_meter_ratio
 from .tracking import PersonState
-
-strike_config = StrikeConfig()
 
 
 @dataclass(frozen=True)
@@ -25,9 +23,15 @@ class StrikingStats:
 
 
 class StrikingStatsCalculator:
-    def __init__(self, person_state: PersonState, detections: Detections):
+    def __init__(
+        self,
+        person_state: PersonState,
+        detections: StrikeDetections,
+        strike_config: StrikeConfig,
+    ):
         self.person_state = person_state
         self.detections = detections
+        self.strike_config = strike_config
         self.fps = person_state.fps
         self.n_frames = detections.n_frames
 
@@ -119,7 +123,7 @@ class StrikingStatsCalculator:
             f"{side}_{joint}": get_joint_speed(
                 state=self.person_state,
                 joint_name=f"{side}_{joint}",
-                strike_config=strike_config,
+                strike_config=self.strike_config,
             )
             for side in SIDES
             for joint in JOINT_NAMES

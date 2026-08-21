@@ -5,14 +5,14 @@ import pytest
 
 from strike_analysis import StrikeConfig
 from strike_analysis.constants import KEYPOINT_INDEX
-from strike_analysis.detections import Strike
-from strike_analysis.detectors import (
+from strike_analysis.strike_detections import Strike
+from strike_analysis.strike_detectors import (
     detect_hook,
     detect_kick,
     detect_straight,
     detect_uppercut,
 )
-from strike_analysis.strike_analyser import DETECTORS, StrikeAnalyser
+from strike_analysis.strike_analysis import STRIKE_DETECTORS, StrikeAnalyser
 
 N_FRAMES = 60
 
@@ -217,10 +217,10 @@ def test_straight_takes_priority_over_hook(
             mask[frame] = True
         return mask
 
-    for name in DETECTORS:
-        monkeypatch.setitem(DETECTORS, name, scripted_detector)
+    for name in STRIKE_DETECTORS:
+        monkeypatch.setitem(STRIKE_DETECTORS, name, scripted_detector)
 
-    detections = StrikeAnalyser(state).get_detections()
+    detections = StrikeAnalyser(state, StrikeConfig()).get_strike_detections()
 
     # The left hook is within 10 frames of the left straight so it is
     # the same punch, the right hook has no straight to clash with
