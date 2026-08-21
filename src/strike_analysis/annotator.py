@@ -7,7 +7,8 @@ import numpy as np
 
 from .config import Config
 from .constants import SKELETON_EDGES
-from .detections import Detections
+from .defense_detections import GuardDetections
+from .strike_detections import StrikeDetections
 from .tracking import PersonState
 from .video import get_fps, open_video
 
@@ -18,30 +19,33 @@ class VideoAnnotator:
     """
 
     def __init__(self, config: Config):
-        self.person_detections: list[tuple[PersonState, Detections, np.ndarray]] = []
+        self.person_detections: list[tuple[PersonState, StrikeDetections, np.ndarray, GuardDetections]] = []
         self.config = config
 
-    def add_tracker(self, states: PersonState, detections: Detections):
+    def add_tracker(self, states: PersonState, strike_detections: StrikeDetections, guard_detections: GuardDetections):
         """
         Adds a PersonTrack object for VideoAnnotater to include in the video annotations.
 
         Args:
             states: PersonTrack object
-            detections: Detections object
+            strike_detections: StrikeDetections object
+            guard_detections: GuardDetections object
         """
 
         self.person_detections.append(
             (
                 states,
-                detections.expanded(),
-                detections.combo_frame_mask(states.fps),
+                strike_detections.expanded(),
+                strike_detections.combo_frame_mask(states.fps),
+                guard_detections.expanded()
             )
         )
 
     @staticmethod
     def annotate_frame(
         person_state: PersonState,
-        detections: Detections,
+        strike_detections: StrikeDetections,
+        guard_detections: GuardDetections,
         frame,
         frame_idx: int,
         combo_frame_mask: np.ndarray | None = None,
@@ -54,7 +58,8 @@ class VideoAnnotator:
 
         Args:
             person_state: PersonTrack object
-            detections: Detections object
+            strike_detections: StrikeDetections object
+            guard_detections: GuardDetections object
             frame: OpenCV frame to be annotated on
             frame_idx: The index in which the frame appears in the video
             combo_frame_mask: Boolean array with one entry per frame,
@@ -93,7 +98,7 @@ class VideoAnnotator:
         )
 
         # Output name of strike detected
-        for row, strike in enumerate(detections.active_at(frame_idx)):
+        for row, strike in enumerate(strike_detections.active_at(frame_idx)):
             cv2.putText(
                 frame,
                 strike.label,
@@ -114,6 +119,17 @@ class VideoAnnotator:
                 1.2,
                 (0, 255, 255),
                 3,
+            )
+
+        if guard_detections is not None and guard_detections.mask[frame_idx]:
+            cv2.putText(
+                frame,
+                "Guard dropped",
+                (50, 100),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                1,
+                (0, 255, 0),
+                2,
             )
 
         VideoAnnotator.draw_skeleton(person_state, frame, frame_idx)
@@ -185,13 +201,14 @@ class VideoAnnotator:
                 if not success:
                     break
 
-                for track, detections, combo_frame_mask in self.person_detections:
+                for track, strike_detections, combo_frame_mask, guard_detections in self.person_detections:
                     if frame_idx >= track.frames_processed:
                         continue
 
                     self.annotate_frame(
                         person_state=track,
-                        detections=detections,
+                        strike_detections=strike_detections,
+                        guard_detections=guard_detections,
                         frame=frame,
                         frame_idx=frame_idx,
                         combo_frame_mask=combo_frame_mask,

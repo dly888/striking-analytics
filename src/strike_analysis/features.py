@@ -296,6 +296,37 @@ def get_joint_angle(track: PersonState, a: str, b: str, c: str) -> np.ndarray:
     )
 
 
+def get_torso_length(track: PersonState) -> np.ndarray:
+    """
+    Calculates the length of the person's torso in pixels for each frame.
+
+    Measured from the centre of the shoulders to the centre of the hips,
+    which gives a body sized ruler that shrinks with distance the same
+    way every other measurement in the frame does.
+
+    Args:
+        track: PersonTrack object
+
+    Returns:
+        Numpy array containing the torso length in pixels for each frame.
+    """
+    shoulder_centre = (
+        track.positions("left_shoulder") + track.positions("right_shoulder")
+    ) / 2
+    hip_centre = (track.positions("left_hip") + track.positions("right_hip")) / 2
+
+    torso_pixels = np.linalg.norm(
+        shoulder_centre - hip_centre,
+        axis=1,
+    )
+
+    # Torso length in pixels shrinks when the person crouches or bends over,
+    # so floor it at half the video median to stop measurements exploding
+    torso_floor = np.nanmedian(torso_pixels) * 0.5
+
+    return np.maximum(torso_pixels, torso_floor)
+
+
 def get_pixel_to_meter_ratio(
     track: PersonState,
 ) -> np.ndarray:
@@ -311,20 +342,7 @@ def get_pixel_to_meter_ratio(
     Returns:
         Numpy array containing the pixel to meter ratio for each frame.
     """
-    shoulder_centre = (
-        track.positions("left_shoulder") + track.positions("right_shoulder")
-    ) / 2
-    hip_centre = (track.positions("left_hip") + track.positions("right_hip")) / 2
-
-    torso_pixels = np.linalg.norm(
-        shoulder_centre - hip_centre,
-        axis=1,
-    )
-
-    # Torso length in pixels shrinks when the person crouches or bends over,
-    # so floor it at half the video median to stop the ratio exploding
-    torso_floor = np.nanmedian(torso_pixels) * 0.5
-    torso_pixels = np.maximum(torso_pixels, torso_floor)
+    torso_pixels = get_torso_length(track)
 
     height_m = track.person.height_m
     torso_length_m = height_m * 0.3

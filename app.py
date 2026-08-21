@@ -16,6 +16,9 @@ MODEL = "yolo26s-pose.pt"
 DISPLAY_WIDTH = 800
 PACING_BIN_S = 5.0
 
+CONFIG = sa.Config()
+STRIKE_CONFIG = sa.StrikeConfig()
+
 
 def build_strike_table(stats: sa.StrikingStats) -> pd.DataFrame:
     """
@@ -171,13 +174,13 @@ if st.button("Analyse"):
         person=person,
         cache_path=cache_path,
         model=MODEL,
-        config=sa.Config(),
-        strike_config=sa.StrikeConfig(),
+        config=CONFIG,
+        strike_config=STRIKE_CONFIG,
         track_progress=show_progress,
     )
 
     progress.empty()
-    TOTAL_SECONDS = result.detections.n_frames / result.person_state.fps
+    TOTAL_SECONDS = result.strike_detections.n_frames / result.person_state.fps
 
     # --------------------------------------------------------
     # Calculate striking stats
@@ -185,7 +188,8 @@ if st.button("Analyse"):
 
     stats_calculator = sa.StrikingStatsCalculator(
         person_state=result.person_state,
-        detections=result.detections,
+        detections=result.strike_detections,
+        strike_config=STRIKE_CONFIG,
     )
 
     stats = stats_calculator.calculate_striking_stats()
@@ -200,7 +204,7 @@ if st.button("Analyse"):
         result=result,
         video_path=video_path,
         output_path=annotated_video_path,
-        config=sa.Config(),
+        config=CONFIG,
     )
 
     # --------------------------------------------------------

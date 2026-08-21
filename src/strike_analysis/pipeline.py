@@ -7,8 +7,10 @@ from pathlib import Path
 from .annotator import VideoAnnotator
 from .cache import TrackCache
 from .config import Config, StrikeConfig
-from .detections import Detections
-from .strike_analyser import StrikeAnalyser
+from .defense_analysis import DefenseAnalyser
+from .defense_detections import GuardDetections
+from .strike_detections import StrikeDetections
+from .strike_analysis import StrikeAnalyser
 from .tracking import Person, PersonState, PoseTracker
 
 
@@ -23,7 +25,8 @@ class AnalysisResult:
     """
 
     person_state: PersonState
-    detections: Detections
+    strike_detections: StrikeDetections
+    guard_detections: GuardDetections
     strike_records: list[dict] = field(default_factory=list)
 
 
@@ -69,15 +72,20 @@ def analyse_video(
 
     person_state = tracker.person_states[track_ids[0]]
 
-    detections = StrikeAnalyser(
+    strike_detections = StrikeAnalyser(
         person_state,
         strike_config=strike_config,
-    ).get_detections()
+    ).get_strike_detections()
+
+    guard_detections = DefenseAnalyser(
+        person_state,
+    ).get_guard_dropped_detections()
 
     return AnalysisResult(
         person_state=person_state,
-        detections=detections,
-        strike_records=detections.to_records(person_state.fps, config.min_punch_frames),
+        strike_detections=strike_detections,
+        guard_detections=guard_detections,
+        strike_records=strike_detections.to_records(person_state.fps, config.min_punch_frames),
     )
 
 
@@ -97,5 +105,5 @@ def render_annotated_video(
         config: Config object.
     """
     annotator = VideoAnnotator(config=config)
-    annotator.add_tracker(result.person_state, result.detections)
+    annotator.add_tracker(result.person_state, result.strike_detections, guard_detections=result.guard_detections)
     annotator.annotate_video(video_path=video_path, new_file_path=output_path)

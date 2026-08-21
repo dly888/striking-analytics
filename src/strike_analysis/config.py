@@ -5,12 +5,17 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class Config:
-    """Configuration parameters controlling detection thresholds and tracking behaviour."""
-
     keypoint_conf: float = 0.4
     max_hold: int = 6
     min_punch_frames: int = 1
     keypoint_smoothing_window: int = 3
+
+
+@dataclass(frozen=True)
+class DefenseConfig:
+    # How far below the shoulder the wrist has to fall for the guard to
+    # count as dropped
+    guard_drop_torso_fraction: float = 0.75
 
 
 @dataclass(frozen=True)

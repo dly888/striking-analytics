@@ -1,6 +1,6 @@
 from .annotator import VideoAnnotator
 from .cache import TrackCache
-from .config import Config, StrikeConfig
+from .config import Config, DefenseConfig, StrikeConfig
 from .constants import (
     JOINT_NAMES,
     KEYPOINT_INDEX,
@@ -12,25 +12,26 @@ from .constants import (
     Side,
     Stance,
 )
-from .detections import Detections, Strike
-from .detectors import detect_hook, detect_straight
+from .strike_detections import StrikeDetections, Strike
+from .strike_detectors import detect_hook, detect_straight
 from .features import (
     get_joint_angle,
     get_joint_speed,
     get_pixel_to_meter_ratio,
     get_speed_threshold,
+    get_torso_length,
 )
 from .footwork_analysis import FootworkAnalyser
 from .geometry import calculate_angles, count_segments, longest_nan_run, segment_bounds
 from .inspector import VelocityInspector
 from .pipeline import AnalysisResult, analyse_video, render_annotated_video
-from .strike_analyser import DETECTORS, StrikeAnalyser
+from .strike_analysis import STRIKE_DETECTORS, StrikeAnalyser
 from .striking_stats import StrikingStats, StrikingStatsCalculator
 from .tracking import Person, PersonState, PoseTracker
 from .video import get_fps, open_video
 
 __all__ = [
-    "DETECTORS",
+    "STRIKE_DETECTORS",
     "JOINT_NAMES",
     "KEYPOINT_INDEX",
     "KEYPOINT_NAMES",
@@ -40,7 +41,8 @@ __all__ = [
     "STRIKE_TYPE_TO_JOINT",
     "AnalysisResult",
     "Config",
-    "Detections",
+    "DefenseConfig",
+    "StrikeDetections",
     "FootworkAnalyser",
     "Person",
     "PersonState",
@@ -65,6 +67,7 @@ __all__ = [
     "get_joint_speed",
     "get_pixel_to_meter_ratio",
     "get_speed_threshold",
+    "get_torso_length",
     "longest_nan_run",
     "open_video",
     "render_annotated_video",
