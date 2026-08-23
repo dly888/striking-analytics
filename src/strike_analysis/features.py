@@ -72,15 +72,18 @@ def get_joint_speed_peaks(
     """
     Gets the peak values of the joint speeds tracked.
 
-    One strike can produce more than one speed peak so peaks closer
-    together than the minimum separation are treated as the same strike
-    and only the fastest of them is kept.
+    A strike can cause two speed peaks due to retraction, extension or chambering.
+    Return every peak and let the strike detection function determine which is a
+    rectraction/extension.
+    Peaks greater than max_speed are considered glitches.
+
 
     Args:
         speed: Speed of the joint at each frame
         threshold: Threshold to be considered a peak at each frame
         max_speed: Maximum speed at which a detection will be considered a glitch
-        min_separation: Minimum number of frames between two peaks.
+        min_separation: Number of frames either side of a glitch spike that
+                        are dropped with it.
     """
     peaks, properties = find_peaks(
         speed,
@@ -93,7 +96,7 @@ def get_joint_speed_peaks(
     )
 
     # A glitch spike affects the keypoints around it, so any peak
-    # around its is considered a glitch too and ends up dropped wit it
+    # around it is considered a glitch too and ends up dropped wit it
     glitches = peaks[~valid]
     shadowed = np.any(
         np.abs(peaks[:, None] - glitches[None, :]) <= min_separation, axis=1
