@@ -27,5 +27,5 @@ cache/*
 !cache/.gitkeep
 
 # Editors / tooling
-.idea/dictionaries/
+.idea/
 .claude/
