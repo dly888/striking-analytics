@@ -15,14 +15,14 @@ class Config:
 class DefenseConfig:
     # How far below the shoulder the wrist has to fall for the guard to
     # count as dropped
-    guard_drop_torso_fraction: float = 0.75
+    guard_drop_torso_fraction: float = 0.4
 
 
 @dataclass(frozen=True)
 class StrikeConfig:
     # Straight punches
     straight_angle_threshold: float = 150.0  # Minimum angle to be considered a straight
-    min_straight_speed_mps: float = 3.5  # Minimum wrist speed in meters per second
+    min_straight_speed_mps: float = 2.0  # Minimum wrist speed in meters per second
     max_straight_speed_mps: float = 15.0
 
     # Hooks
@@ -50,13 +50,20 @@ class StrikeConfig:
     )
 
     # Kicks
-    angle_between_shins_threshold: float = 90  # Minimum angle
-    min_kick_speed: float = 3.0  # Minimum ankle speed in meters per second
+    angle_between_shins_threshold: float = 60  # Minimum angle
+    min_kick_speed: float = 2.0  # Minimum ankle speed in meters per second
     max_kick_speed: float = 15.0  # Maximum ankle speed in meters per second
     min_kick_ankle_raise_m: float = (
         0.25  # Minimum height of the kicking ankle above the pivot ankle in meters
     )
+    # A kick peaks once on the chamber and again on the extension, so the
+    # two phases sit further apart than they do for a punch
+    min_kick_peak_separation_frames: int = 20
 
     # Other
     max_hold: int = 6
     min_punch_frames: int = 1
+
+    # Minimum number of frames between two speed peaks of the same strike,
+    # shared by the straight, hook and uppercut detectors
+    min_punch_peak_separation_frames: int = 10

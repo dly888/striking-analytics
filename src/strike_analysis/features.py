@@ -64,20 +64,27 @@ def get_joint_speed(
 
 
 def get_joint_speed_peaks(
-    speed: np.ndarray, threshold: np.ndarray, max_speed: np.ndarray
+    speed: np.ndarray,
+    threshold: np.ndarray,
+    max_speed: np.ndarray,
+    min_separation: int = 10,
 ) -> ndarray:
     """
     Gets the peak values of the joint speeds tracked.
+
+    One strike can produce more than one speed peak so peaks closer
+    together than the minimum separation are treated as the same strike
+    and only the fastest of them is kept.
 
     Args:
         speed: Speed of the joint at each frame
         threshold: Threshold to be considered a peak at each frame
         max_speed: Maximum speed at which a detection will be considered a glitch
+        min_separation: Minimum number of frames between two peaks.
     """
     peaks, properties = find_peaks(
         speed,
         height=threshold,
-        distance=10,
     )
 
     # Filter out glitch spikes
@@ -85,7 +92,14 @@ def get_joint_speed_peaks(
         max_speed[peaks] if np.ndim(max_speed) else max_speed
     )
 
-    return peaks[valid]
+    # A glitch spike affects the keypoints around it, so any peak
+    # around its is considered a glitch too and ends up dropped wit it
+    glitches = peaks[~valid]
+    shadowed = np.any(
+        np.abs(peaks[:, None] - glitches[None, :]) <= min_separation, axis=1
+    ) if glitches.size else np.full(len(peaks), False)
+
+    return peaks[valid & ~shadowed]
 
 
 def get_joint_rise_speed(

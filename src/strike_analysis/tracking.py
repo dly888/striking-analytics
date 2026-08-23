@@ -225,11 +225,6 @@ class PoseTracker:
             (frames_processed, N_KEYPOINTS, 3), np.nan, dtype=np.float32
         )
 
-        keypoints = smooth_keypoints(
-            keypoints,
-            window=self.config.keypoint_smoothing_window,
-        )
-
         boxes = np.full((frames_processed, 4), np.nan, dtype=np.float32)
         box_conf = np.full(frames_processed, np.nan, dtype=np.float32)
 
@@ -239,6 +234,11 @@ class PoseTracker:
             box_conf[frame_idx] = conf
 
         keypoints[keypoints[:, :, 2] < self.config.keypoint_conf] = np.nan
+
+        keypoints = smooth_keypoints(
+            keypoints,
+            window=self.config.keypoint_smoothing_window,
+        )
 
         # Currently assigns the same Person object to every tracked fighter, change this later
         return PersonState(track_id, keypoints, boxes, box_conf, fps, self.person)

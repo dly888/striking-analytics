@@ -86,11 +86,8 @@ class TrackCache:
         with np.load(path) as data:
             meta = json.loads(bytes(data["_meta"]))
 
-            tracker = PoseTracker(
-                person=Person(**meta["person"]),
-                model_name=meta["model_name"],
-                config=Config(**meta["config"]),
-            )
+            tracker = PoseTracker(person=Person(**meta["person"]), config=Config(**meta["config"]),
+                                  model_name=meta["model_name"])
 
             states = {}
             for key, state_meta in meta["states"].items():

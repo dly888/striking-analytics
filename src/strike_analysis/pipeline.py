@@ -61,7 +61,7 @@ def analyse_video(
     if cache_path.exists():
         tracker = TrackCache.load_pose_tracker(path=cache_path)
     else:
-        tracker = PoseTracker(person=person, model_name=model, config=config)
+        tracker = PoseTracker(person=person, config=config, model_name=model)
         tracker.track(video_path=video_path, track_progress=track_progress)
         TrackCache.save_pose_tracker(pose_tracker=tracker, new_path=cache_path)
 
