@@ -10,7 +10,7 @@ from .constants import SKELETON_EDGES
 from .defense_detections import GuardDetections
 from .strike_detections import StrikeDetections
 from .tracking import PersonState
-from .video import get_fps, open_video
+from .video import get_fps, open_video, open_video_writer
 
 
 class VideoAnnotator:
@@ -186,35 +186,26 @@ class VideoAnnotator:
             width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
             height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
 
-            writer = cv2.VideoWriter(
-                str(new_file_path),
-                # H.264, browsers can't play the mp4v codec
-                cv2.VideoWriter_fourcc(*"avc1"),
-                get_fps(video_path),
-                (width, height),
-            )
+            with open_video_writer(new_file_path, get_fps(video_path), (width, height)) as write_frame:
+                frame_idx = 0
 
-            frame_idx = 0
+                while True:
+                    success, frame = cap.read()
+                    if not success:
+                        break
 
-            while True:
-                success, frame = cap.read()
-                if not success:
-                    break
+                    for track, strike_detections, combo_frame_mask, guard_detections in self.person_detections:
+                        if frame_idx >= track.frames_processed:
+                            continue
 
-                for track, strike_detections, combo_frame_mask, guard_detections in self.person_detections:
-                    if frame_idx >= track.frames_processed:
-                        continue
+                        self.annotate_frame(
+                            person_state=track,
+                            strike_detections=strike_detections,
+                            guard_detections=guard_detections,
+                            frame=frame,
+                            frame_idx=frame_idx,
+                            combo_frame_mask=combo_frame_mask,
+                        )
 
-                    self.annotate_frame(
-                        person_state=track,
-                        strike_detections=strike_detections,
-                        guard_detections=guard_detections,
-                        frame=frame,
-                        frame_idx=frame_idx,
-                        combo_frame_mask=combo_frame_mask,
-                    )
-
-                writer.write(frame)
-                frame_idx += 1
-
-            writer.release()
+                    write_frame(frame)
+                    frame_idx += 1
