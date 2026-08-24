@@ -6,7 +6,6 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 from PIL import Image
-from streamlit.runtime import stats
 from streamlit_image_coordinates import streamlit_image_coordinates
 
 import strike_analysis as sa
@@ -49,6 +48,74 @@ def build_strike_table(stats: sa.StrikingStats) -> pd.DataFrame:
             )
 
     return pd.DataFrame(rows)
+
+
+def build_guard_drop_table(
+    guard_detections: sa.GuardDetections,
+    fps: float,
+) -> pd.DataFrame:
+    """
+    Reshape the guard drop mask into one row per drop.
+
+    The mask is a per frame flag, which says nothing about when each
+    drop happened, so the True runs are turned into timed rows.
+
+    Args:
+        guard_detections: GuardDetections object for the analysed video.
+        fps: Frames per second of the analysed video.
+
+    Returns:
+        DataFrame with one row per guard drop.
+    """
+    starts, ends = sa.segment_bounds(guard_detections.mask)
+
+    return pd.DataFrame(
+        {
+            "Drop": np.arange(1, starts.size + 1),
+            "Start (s)": np.round(starts / fps, 1),
+            "End (s)": np.round(ends / fps, 1),
+            "Duration (s)": np.round((ends - starts) / fps, 1),
+        }
+    )
+
+
+def build_guard_timeline(
+    guard_detections: sa.GuardDetections,
+    fps: float,
+    bin_size_s: float = PACING_BIN_S,
+) -> pd.DataFrame:
+    """
+    Count how long the guard was down in each block of time.
+
+    Mirrors the striking pacing chart so the two can be read against
+    each other.
+
+    Args:
+        guard_detections: GuardDetections object for the analysed video.
+        fps: Frames per second of the analysed video.
+        bin_size_s: Length of each block in seconds.
+
+    Returns:
+        DataFrame holding the start time of each block and the seconds
+        spent with the guard down during it.
+    """
+    duration_s = guard_detections.n_frames / fps
+
+    if duration_s <= 0:
+        return pd.DataFrame({"Time (s)": [], "Guard down (s)": []})
+
+    edges = np.arange(0.0, duration_s + bin_size_s, bin_size_s)
+
+    dropped_times_s = np.flatnonzero(guard_detections.mask) / fps
+
+    counts, _ = np.histogram(dropped_times_s, bins=edges)
+
+    return pd.DataFrame(
+        {
+            "Time (s)": edges[:-1],
+            "Guard down (s)": counts / fps,
+        }
+    )
 
 
 RHYTHM_HELP = """
@@ -186,13 +253,20 @@ if st.button("Analyse"):
     # Calculate striking stats
     # --------------------------------------------------------
 
-    stats_calculator = sa.StrikingStatsCalculator(
+    striking_stats_calculator = sa.StrikingStatsCalculator(
         person_state=result.person_state,
         detections=result.strike_detections,
         strike_config=STRIKE_CONFIG,
     )
 
-    stats = stats_calculator.calculate_striking_stats()
+    striking_stats = striking_stats_calculator.calculate_striking_stats()
+
+    defense_stats_calculator = sa.DefenseStatsCalculator(
+        person_state=result.person_state,
+        guard_detections=result.guard_detections
+    )
+
+    guard_stats = defense_stats_calculator.calculate_guard_stats()
 
     # --------------------------------------------------------
     # Render annotated video
@@ -239,7 +313,8 @@ if st.button("Analyse"):
     # --------------------------------------------------------
 
     st.session_state["result"] = result
-    st.session_state["stats"] = stats
+    st.session_state["stats"] = striking_stats
+    st.session_state["guard_stats"] = guard_stats
     st.session_state["video_path"] = video_path
     st.session_state["frame"] = frame
     st.session_state["annotated_video_path"] = annotated_video_path
@@ -353,7 +428,7 @@ if "annotated_video_path" in st.session_state:
 # ============================================================
 
 if "stats" in st.session_state:
-    stats = st.session_state["stats"]
+    striking_stats = st.session_state["stats"]
 
     st.subheader("Striking Stats")
 
@@ -361,14 +436,14 @@ if "stats" in st.session_state:
     # Headline numbers
     # --------------------------------------------------------
 
-    strikes_per_sec = sum(stats.strike_rates.values())
+    strikes_per_sec = sum(striking_stats.strike_rates.values())
 
     total_col, rate_col, combo_col, rhythm_col = st.columns(4)
 
-    total_col.metric("Total strikes", stats.total_strikes)
+    total_col.metric("Total strikes", striking_stats.total_strikes)
     rate_col.metric("Strikes per sec", f"{strikes_per_sec:.1f}")
-    combo_col.metric("Combo count", stats.combo_count)
-    rhythm_col.metric("Rhythm score (CV)", f"{stats.rhythm_cv:.2f}")
+    combo_col.metric("Combo count", striking_stats.combo_count)
+    rhythm_col.metric("Rhythm score (CV)", f"{striking_stats.rhythm_cv:.2f}")
 
     st.caption(
         "Rhythm score is the coefficient of variation of the gaps "
@@ -383,7 +458,7 @@ if "stats" in st.session_state:
     # --------------------------------------------------------
 
     st.dataframe(
-        build_strike_table(stats),
+        build_strike_table(striking_stats),
         hide_index=True,
     )
 
@@ -393,8 +468,8 @@ if "stats" in st.session_state:
 
     pacing = pd.DataFrame(
         {
-            "Time (s)": list(stats.pacing_bins.keys()),
-            "Strikes": list(stats.pacing_bins.values()),
+            "Time (s)": list(striking_stats.pacing_bins.keys()),
+            "Strikes": list(striking_stats.pacing_bins.values()),
         }
     )
 
@@ -414,7 +489,7 @@ if "stats" in st.session_state:
 
     thrown = [
         strike_name
-        for strike_name, speeds in stats.strike_speeds.items()
+        for strike_name, speeds in striking_stats.strike_speeds.items()
         if np.isfinite(speeds).any()
     ]
 
@@ -424,8 +499,8 @@ if "stats" in st.session_state:
         for tab, strike_name in zip(st.tabs(labels), thrown):
             fatigue = pd.DataFrame(
                 {
-                    "Time (s)": stats.strike_times_s[strike_name],
-                    "Speed (m/s)": stats.strike_speeds[strike_name],
+                    "Time (s)": striking_stats.strike_times_s[strike_name],
+                    "Speed (m/s)": striking_stats.strike_speeds[strike_name],
                 }
             )
 
@@ -436,6 +511,51 @@ if "stats" in st.session_state:
             )
     else:
         st.info("No strikes were measured, so there is nothing to plot.")
+
+# ============================================================
+# Guard Stats
+# ============================================================
+
+if "guard_stats" in st.session_state:
+    guard_stats = st.session_state["guard_stats"]
+
+    result = st.session_state["result"]
+    guard_detections = result.guard_detections
+    fps = result.person_state.fps
+
+    st.subheader("Guard Stats")
+
+    guard_drops = build_guard_drop_table(
+        guard_detections=guard_detections,
+        fps=fps,
+    )
+
+    # --------------------------------------------------------
+    # Headline numbers
+    # --------------------------------------------------------
+
+    longest_drop_s = guard_drops["Duration (s)"].max() if not guard_drops.empty else 0.0
+
+    up_time_col, up_pct_col, guard_drops_col, longest_col = st.columns(4)
+
+    up_time_col.metric("Guard up time", f"{guard_stats.guard_up_time:.1f} s")
+    up_pct_col.metric("Guard up", f"{guard_stats.guard_up_time_percentage:.0%}")
+    guard_drops_col.metric("Guard drops", guard_stats.guard_drop_count)
+    longest_col.metric("Longest drop", f"{longest_drop_s:.1f} s")
+
+
+    # --------------------------------------------------------
+    # Every drop
+    # --------------------------------------------------------
+
+    if guard_drops:
+        st.caption("Every guard drop, in the order they happened.")
+
+        st.dataframe(
+            guard_drops,
+            hide_index=True,
+        )
+
 
 # ============================================================
 # Footwork Analysis

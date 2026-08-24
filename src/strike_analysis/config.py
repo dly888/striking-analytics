@@ -57,7 +57,7 @@ class StrikeConfig:
         0.25  # Minimum height of the kicking ankle above the pivot ankle in meters
     )
     # A kick peaks once on the chamber and again on the extension, so the
-    # two phases sit further apart than they do for a punch
+    # two movements are further apart than a punches extension/retraction
     min_kick_peak_separation_frames: int = 20
 
     # Other

@@ -12,6 +12,7 @@ from .constants import (
     Side,
     Stance,
 )
+from .defense_detections import GuardDetections
 from .strike_detections import StrikeDetections, Strike
 from .strike_detectors import detect_hook, detect_straight
 from .features import (
@@ -29,6 +30,7 @@ from .strike_analysis import STRIKE_DETECTORS, StrikeAnalyser
 from .striking_stats import StrikingStats, StrikingStatsCalculator
 from .tracking import Person, PersonState, PoseTracker
 from .video import get_fps, open_video
+from .defense_stats import DefenseStatsCalculator, GuardStats
 
 __all__ = [
     "STRIKE_DETECTORS",
@@ -42,6 +44,7 @@ __all__ = [
     "AnalysisResult",
     "Config",
     "DefenseConfig",
+    "GuardDetections",
     "StrikeDetections",
     "FootworkAnalyser",
     "Person",
@@ -54,6 +57,8 @@ __all__ = [
     "StrikeConfig",
     "StrikingStats",
     "StrikingStatsCalculator",
+    "DefenseStatsCalculator",
+    "GuardStats",
     "TrackCache",
     "VelocityInspector",
     "VideoAnnotator",

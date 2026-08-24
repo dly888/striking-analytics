@@ -248,7 +248,7 @@ def detect_uppercut(
             detections[peak] = True
 
 
-    detections = merge_nearby_detections(detections, min_separation=10)
+    detections = merge_nearby_detections(detections, min_separation=strike_config.min_punch_peak_separation_frames)
 
     return detections
 
@@ -331,6 +331,6 @@ def detect_kick(
             detections[peak] = True
 
 
-    detections = merge_nearby_detections(detections, min_separation=10)
+    detections = merge_nearby_detections(detections, min_separation=strike_config.min_kick_peak_separation_frames)
 
     return detections
