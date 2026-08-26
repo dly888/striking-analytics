@@ -16,7 +16,7 @@ from .features import (
 )
 from .tracking import PersonState
 
-def merge_nearby_detections(detection_mask, min_separation):
+def merge_nearby_detections(detection_mask, min_separation) -> np.ndarray:
     merged = np.full(len(detection_mask), False)
     last_detection = None
     for frame_idx in np.flatnonzero(detection_mask):
@@ -94,7 +94,7 @@ def detect_straight(
 def detect_hook(
         state: PersonState,
         strike: Strike,
-        strike_strike_config: StrikeConfig,
+        strike_config: StrikeConfig,
 ) -> np.ndarray:
     """
     Detects whether a hook occurs.
@@ -107,7 +107,7 @@ def detect_hook(
     Args:
         state: PersonState object to detect from
         strike: Information on the strike
-        strike_strike_config: Strike strike_config values
+        strike_config: Strike strike_config values
 
     Returns:
         Numpy array which contains whether a hook is detected at each frame
@@ -115,29 +115,29 @@ def detect_hook(
     side = strike.side
     opposite = "left" if side == "right" else "right"
 
-    arm_sweep_speed = get_arm_sweep_speed(state, side, strike_strike_config)
-    arm_sweep_threshold = strike_strike_config.hook_sweep_speed_threshold
+    arm_sweep_speed = get_arm_sweep_speed(state, side, strike_config)
+    arm_sweep_threshold = strike_config.hook_sweep_speed_threshold
     arm_sweep_speed_peaks = get_joint_speed_peaks(
         arm_sweep_speed,
         arm_sweep_threshold,
-        strike_strike_config.max_hook_sweep_speed,
-        strike_strike_config.min_punch_peak_separation_frames,
+        strike_config.max_hook_sweep_speed,
+        strike_config.min_punch_peak_separation_frames,
     )
 
-    wrist_speed = get_joint_speed(state, f"{side}_wrist", strike_strike_config)
+    wrist_speed = get_joint_speed(state, f"{side}_wrist", strike_config)
     wrist_speed_threshold = get_speed_threshold(
         state,
-        strike_strike_config.min_straight_speed_mps,  # Use the straight speed here
+        strike_config.min_straight_speed_mps,  # Use the straight speed here
     )
 
     arm_lifted = (
             get_joint_angle(state, f"{side}_hip", f"{side}_shoulder", f"{side}_elbow")
-            > strike_strike_config.arm_body_angle_threshold
+            > strike_config.arm_body_angle_threshold
     )
 
     arm_bent = (
             get_joint_angle(state, f"{side}_shoulder", f"{side}_elbow", f"{side}_wrist")
-            < strike_strike_config.hook_elbow_angle_threshold  # Threshold is a maximum
+            < strike_config.hook_elbow_angle_threshold  # Threshold is a maximum
     )
 
     # Checks if the wrist is inward enough
@@ -145,7 +145,7 @@ def detect_hook(
             get_joint_angle(
                 state, f"{opposite}_shoulder", f"{side}_shoulder", f"{side}_wrist"
             )
-            < strike_strike_config.hook_wrist_shoulder_line_angle_threshold  # Threshold is a maximum
+            < strike_config.hook_wrist_shoulder_line_angle_threshold  # Threshold is a maximum
     )
 
     detections = np.full(len(wrist_speed), fill_value=False)

@@ -6,8 +6,6 @@ from dataclasses import dataclass
 @dataclass(frozen=True)
 class Config:
     keypoint_conf: float = 0.4
-    max_hold: int = 6
-    min_punch_frames: int = 1
     keypoint_smoothing_window: int = 3
 
 

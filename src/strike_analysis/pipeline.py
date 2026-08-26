@@ -85,7 +85,7 @@ def analyse_video(
         person_state=person_state,
         strike_detections=strike_detections,
         guard_detections=guard_detections,
-        strike_records=strike_detections.to_records(person_state.fps, config.min_punch_frames),
+        strike_records=strike_detections.to_records(person_state.fps, strike_config.min_punch_frames),
     )
 
 

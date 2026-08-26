@@ -4,10 +4,49 @@ import numpy as np
 from numpy import ndarray
 from scipy.signal import find_peaks
 
-from . import Side
+from .constants import Side
 from .config import StrikeConfig
 from .geometry import calculate_angles
 from .tracking import PersonState
+
+
+def last_valid_gaps(
+    visible: np.ndarray,
+    max_hold: int,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """
+    For each frame find the most recent earlier frame with a valid value.
+
+    Args:
+        visible: Boolean mask array to determine which frames are valid.
+        max_hold: Largest gap, in frames, that may be bridged. A frame is
+            only measurable when its previous valid frame is at most
+            max_hold + 1 frames back.
+
+    Returns:
+        Tuple of (previous, gap, measurable):
+            previous: Index of the most recent valid frame strictly before
+                each frame, or -1 where there is none.
+            gap: Number of frames between each frame and its previous valid
+                frame.
+            measurable: Boolean mask array to determine frames where a value can be
+                calculated, i.e. the frame is visible and its previous valid
+                frame is within max_hold + 1.
+    """
+    frames = np.arange(len(visible))
+
+    # For each frame store the most recent valid frame at or before it
+    prefix = np.maximum.accumulate(np.where(visible, frames, -1))
+
+    # Shift by one so that previous[i] is strictly before frame i
+    previous = np.roll(prefix, 1)
+    previous[0] = -1
+
+    gap = frames - previous
+
+    measurable = visible & (previous >= 0) & (gap <= max_hold + 1)
+
+    return previous, gap, measurable
 
 
 def get_joint_speed(
@@ -35,21 +74,7 @@ def get_joint_speed(
     # Assume if x is NaN then y is NaN.
     visible = ~np.isnan(xy[:, 0])
 
-    # Each frames[i] represents the frame index.
-    frames = np.arange(len(xy))
-
-    # For each frame store the most recent valid frame at or before it
-    prefix = np.maximum.accumulate(np.where(visible, frames, -1))
-
-    # Shift by one so that prefix[i] is strictly before frame i
-    prefix = np.roll(prefix, 1)
-    prefix[0] = -1
-
-    previous = prefix
-
-    gap = frames - previous
-
-    measurable = visible & (previous >= 0) & (gap <= strike_config.max_hold + 1)
+    previous, gap, measurable = last_valid_gaps(visible, strike_config.max_hold)
 
     speed = np.full(len(xy), np.nan)
 
@@ -130,21 +155,7 @@ def get_joint_rise_speed(
     # Assume if x is NaN then y is NaN.
     visible = ~np.isnan(xy[:, 0])
 
-    # Each frames[i] represents the frame index.
-    frames = np.arange(len(xy))
-
-    # For each frame store the most recent valid frame at or before it
-    prefix = np.maximum.accumulate(np.where(visible, frames, -1))
-
-    # Shift by one so that prefix[i] is strictly before frame i
-    prefix = np.roll(prefix, 1)
-    prefix[0] = -1
-
-    previous = prefix
-
-    gap = frames - previous
-
-    measurable = visible & (previous >= 0) & (gap <= config.max_hold + 1)
+    previous, gap, measurable = last_valid_gaps(visible, config.max_hold)
 
     rise_speed = np.full(len(xy), np.nan)
 
@@ -188,21 +199,7 @@ def get_wrist_angular_speed(
     # Assume if the angle is NaN then the wrist/shoulder position is invalid
     visible = ~np.isnan(angle)
 
-    # Each frames[i] represents the frame index.
-    frames = np.arange(len(angle))
-
-    # For each frame store the most recent valid frame at or before it
-    prefix = np.maximum.accumulate(np.where(visible, frames, -1))
-
-    # Shift by one so that prefix[i] is strictly before frame i
-    prefix = np.roll(prefix, 1)
-    prefix[0] = -1
-
-    previous = prefix
-
-    gap = frames - previous
-
-    measurable = visible & (previous >= 0) & (gap <= config.max_hold + 1)
+    previous, gap, measurable = last_valid_gaps(visible, config.max_hold)
 
     # Signed change, wrapped into [-180, 180)
     d_angle = angle[measurable] - angle[previous[measurable]]
@@ -262,21 +259,7 @@ def get_arm_sweep_speed(
     # Assume if the angle is NaN then the required keypoints are invalid
     visible = ~np.isnan(angle)
 
-    # Each frames[i] represents the frame index
-    frames = np.arange(len(angle))
-
-    # For each frame store the most recent valid frame at or before it
-    prefix = np.maximum.accumulate(np.where(visible, frames, -1))
-
-    # Shift by one so that prefix[i] is strictly before frame i
-    prefix = np.roll(prefix, 1)
-    prefix[0] = -1
-
-    previous = prefix
-
-    gap = frames - previous
-
-    measurable = visible & (previous >= 0) & (gap <= config.max_hold + 1)
+    previous, gap, measurable = last_valid_gaps(visible, config.max_hold)
 
     # Signed change, wrapped into [-180, 180)
     d_angle = angle[measurable] - angle[previous[measurable]]
@@ -298,7 +281,7 @@ def get_joint_angle(track: PersonState, a: str, b: str, c: str) -> np.ndarray:
     Gets the angle between three joints.
 
     Args:
-        track: PersonTrack object.
+        track: PersonState object.
         a: Position vector of the first keypoint/joint
         b: Position vector of the second keypoint/joint, the joint where the angle is actually at.
         c: Position vector of the third keypoint/joint
@@ -313,7 +296,7 @@ def get_joint_angle(track: PersonState, a: str, b: str, c: str) -> np.ndarray:
     )
 
 
-def get_torso_length(track: PersonState) -> np.ndarray:
+def get_torso_length(state: PersonState) -> np.ndarray:
     """
     Calculates the length of the person's torso in pixels for each frame.
 
@@ -322,15 +305,15 @@ def get_torso_length(track: PersonState) -> np.ndarray:
     way every other measurement in the frame does.
 
     Args:
-        track: PersonTrack object
+        state: PersonState object
 
     Returns:
         Numpy array containing the torso length in pixels for each frame.
     """
     shoulder_centre = (
-        track.positions("left_shoulder") + track.positions("right_shoulder")
+                              state.positions("left_shoulder") + state.positions("right_shoulder")
     ) / 2
-    hip_centre = (track.positions("left_hip") + track.positions("right_hip")) / 2
+    hip_centre = (state.positions("left_hip") + state.positions("right_hip")) / 2
 
     torso_pixels = np.linalg.norm(
         shoulder_centre - hip_centre,
@@ -345,7 +328,7 @@ def get_torso_length(track: PersonState) -> np.ndarray:
 
 
 def get_pixel_to_meter_ratio(
-    track: PersonState,
+    state: PersonState,
 ) -> np.ndarray:
     """
     Calculates pixel-to-meter conversion ratio for each frame.
@@ -354,21 +337,21 @@ def get_pixel_to_meter_ratio(
     length .
 
     Args:
-        track: PersonTrack object
+        state: PersonState object
 
     Returns:
         Numpy array containing the pixel to meter ratio for each frame.
     """
-    torso_pixels = get_torso_length(track)
+    torso_pixels = get_torso_length(state)
 
-    height_m = track.person.height_m
+    height_m = state.person.height_m
     torso_length_m = height_m * 0.3
     ratio = torso_length_m / torso_pixels
 
     return ratio
 
 
-def get_ankle_raise(track: PersonState, side: Side) -> np.ndarray:
+def get_ankle_raise(state: PersonState, side: Side) -> np.ndarray:
     """
     Height in metres of one ankle above the opposite ankle for each frame.
 
@@ -376,7 +359,7 @@ def get_ankle_raise(track: PersonState, side: Side) -> np.ndarray:
     other.
 
     Args:
-        track: PersonTrack object
+        state: PersonState object
         side: Side whose ankle is measured against the opposite ankle
 
     Returns:
@@ -384,26 +367,26 @@ def get_ankle_raise(track: PersonState, side: Side) -> np.ndarray:
     """
     opposite = "left" if side == "right" else "right"
 
-    ankle_xy = track.positions(f"{side}_ankle")
-    opposite_ankle_xy = track.positions(f"{opposite}_ankle")
+    ankle_xy = state.positions(f"{side}_ankle")
+    opposite_ankle_xy = state.positions(f"{opposite}_ankle")
 
-    pixel_to_m_ratio = get_pixel_to_meter_ratio(track)
+    pixel_to_m_ratio = get_pixel_to_meter_ratio(state)
 
     return (opposite_ankle_xy[:, 1] - ankle_xy[:, 1]) * pixel_to_m_ratio
 
 
-def get_speed_threshold(track: PersonState, speed_mps: float) -> np.ndarray:
+def get_speed_threshold(state: PersonState, speed_mps: float) -> np.ndarray:
     """
     Calculates a speed threshold based on a fixed real life speed.
 
     Args:
-        track: PersonTrack object
+        track: PersonState object
         speed_mps: Speed threshold in meters per second, set at config.
 
     Returns:
         Numpy array containing the threshold at each frame in pixels per second.
         :rtype: np.ndarray
     """
-    pixel_to_m_ratio = get_pixel_to_meter_ratio(track)
+    pixel_to_m_ratio = get_pixel_to_meter_ratio(state)
     thresholds = speed_mps / pixel_to_m_ratio
     return thresholds

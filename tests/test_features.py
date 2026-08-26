@@ -184,9 +184,8 @@ def test_get_joint_speed_peaks_array_max():
 
 def sweep_keypoints(alphas: np.ndarray) -> np.ndarray:
     """
-    Places the right wrist on a circle around the right shoulder, one
-    angle per frame. Angle 0 points along the shoulder line towards the
-    opposite shoulder, matching the sweep angle in get_arm_sweep_speed.
+    Orbit the right wrist around the right shoulder, one angle per
+    frame. Angle 0 points along the shoulder line.
 
     Args:
         alphas: Wrist angle in degrees for each frame

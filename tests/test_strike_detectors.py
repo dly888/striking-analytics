@@ -53,8 +53,8 @@ def guard_keypoints():
 
 def move_keypoint(keypoints, name, start_frame, target, steps):
     """
-    Moves a keypoint from its current position towards a target, one
-    interpolation step per frame, then holds it at the final position.
+    Interpolate a keypoint towards a target, one step per frame, then
+    hold it at the final position.
 
     Args:
         keypoints: Keypoints array to be modified in place
@@ -97,9 +97,8 @@ def test_detect_straight_slow_extension_ignored(guard_keypoints, make_person_sta
 
 def set_hook_arc(keypoints, alphas):
     """
-    Places the right wrist on a circle around the right shoulder, one
-    angle per frame. Angle 0 points along the shoulder line towards the
-    opposite shoulder, matching the sweep angle in get_arm_sweep_speed.
+    Sweep the right wrist along an arc around the right shoulder, one
+    angle per frame. Angle 0 points along the shoulder line.
 
     Args:
         keypoints: Keypoints array to be modified in place
