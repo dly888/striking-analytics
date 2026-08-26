@@ -5,6 +5,7 @@ import seaborn as sns
 from matplotlib.lines import Line2D
 from scipy.ndimage import gaussian_filter
 
+from .features import get_ankle_raise
 from .tracking import PersonState
 
 LEFT_FOOT_COLOUR = "#4cc9f0"
@@ -319,6 +320,21 @@ class FootworkAnalyser:
         )
 
 
+    def get_foot_in_air_mask(self, min_raise_m=0.15):
+        """
+        Get mask to determine whether each foot is in the air.
+
+        Args:
+            min_raise_m: Minimum ankle raise, in metres
+
+        Returns:
+            Tuple of (left_airborne, right_airborne) boolean arrays.
+        """
+        left_raise = get_ankle_raise(self.person_state, "left")
+        right_raise = get_ankle_raise(self.person_state, "right")
+
+        return left_raise > min_raise_m, right_raise > min_raise_m
+
     def get_plot_figure(self, bins=40, smoothing=1.5):
         """
         Plots a heatmap of where the person's feet spend time on the floor.
@@ -334,8 +350,13 @@ class FootworkAnalyser:
         self.get_true_scale_homography()
         self.transform_keypoints_to_true_scale()
 
-        left = self.mapped_left_ankle_keypoints
-        right = self.mapped_right_ankle_keypoints
+        # Drop frames where a foot is airborne
+        left_airborne, right_airborne = self.get_foot_in_air_mask()
+
+        left = self.mapped_left_ankle_keypoints.copy()
+        right = self.mapped_right_ankle_keypoints.copy()
+        left[left_airborne] = np.nan
+        right[right_airborne] = np.nan
 
         both = np.vstack([left, right])
 

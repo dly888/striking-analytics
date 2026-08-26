@@ -5,6 +5,7 @@ import numpy as np
 from .config import StrikeConfig
 from .strike_detections import Strike
 from .features import (
+    get_ankle_raise,
     get_arm_sweep_speed,
     get_joint_angle,
     get_joint_rise_speed,
@@ -311,8 +312,7 @@ def detect_kick(
 
     # Height of the kicking ankle above the pivot ankle in meters.
     # Differentiates between a kick and footwork
-    pixel_to_m_ratio = get_pixel_to_meter_ratio(state)
-    ankle_raise = (pivot_foot_xy[:, 1] - strike_foot_xy[:, 1]) * pixel_to_m_ratio
+    ankle_raise = get_ankle_raise(state, side)
 
     foot_lifted = ankle_raise > strike_config.min_kick_ankle_raise_m
 

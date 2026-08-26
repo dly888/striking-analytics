@@ -368,6 +368,30 @@ def get_pixel_to_meter_ratio(
     return ratio
 
 
+def get_ankle_raise(track: PersonState, side: Side) -> np.ndarray:
+    """
+    Height in metres of one ankle above the opposite ankle for each frame.
+
+    Positive when the given side's ankle is higher off the ground than the
+    other.
+
+    Args:
+        track: PersonTrack object
+        side: Side whose ankle is measured against the opposite ankle
+
+    Returns:
+        Numpy array of the ankle raise in metres for each frame.
+    """
+    opposite = "left" if side == "right" else "right"
+
+    ankle_xy = track.positions(f"{side}_ankle")
+    opposite_ankle_xy = track.positions(f"{opposite}_ankle")
+
+    pixel_to_m_ratio = get_pixel_to_meter_ratio(track)
+
+    return (opposite_ankle_xy[:, 1] - ankle_xy[:, 1]) * pixel_to_m_ratio
+
+
 def get_speed_threshold(track: PersonState, speed_mps: float) -> np.ndarray:
     """
     Calculates a speed threshold based on a fixed real life speed.
