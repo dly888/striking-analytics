@@ -325,90 +325,6 @@ if st.button("Analyse"):
     st.session_state.pop("footwork_analyser", None)
 
 # ============================================================
-# Floor selection
-# ============================================================
-
-if "result" in st.session_state:
-    st.subheader("Select floor edges")
-
-    st.write(
-        "Trace the left edge then the right edge, each near end first: "
-        "near-left, far-left, near-right, far-right."
-    )
-
-    frame = st.session_state["frame"]
-
-    # --------------------------------------------------------
-    # Resize frame for display while maintaining aspect ratio
-    # --------------------------------------------------------
-
-    display_frame = Image.fromarray(frame)
-
-    display_height = int(frame.shape[0] * DISPLAY_WIDTH / frame.shape[1])
-
-    display_frame = display_frame.resize((DISPLAY_WIDTH, display_height))
-
-    value = streamlit_image_coordinates(
-        display_frame,
-        key="floor",
-    )
-
-    if st.button("Clear points"):
-        st.session_state.pop("floor_points", None)
-        st.session_state.pop("floor", None)
-        st.rerun()
-
-    # --------------------------------------------------------
-    # Get floor edges
-    # --------------------------------------------------------
-
-    if "floor_points" not in st.session_state:
-        st.session_state.floor_points = []
-
-    if value is not None:
-        scale_x = frame.shape[1] / value["width"]
-        scale_y = frame.shape[0] / value["height"]
-
-        point = (value["x"] * scale_x, value["y"] * scale_y)
-
-        if not st.session_state.floor_points or (
-            point != st.session_state.floor_points[-1]
-        ):
-            st.session_state.floor_points.append(point)
-
-    points = st.session_state.floor_points
-
-    st.write(f"Selected {len(points)}/4 points")
-
-    for i, point in enumerate(points, start=1):
-        st.write(f"Point {i}: {point}")
-
-    # ----------------------------------------------------
-    # Create footwork analyser
-    # ----------------------------------------------------
-
-    if len(points) == 4:
-        edge1 = (points[0], points[1])
-        edge2 = (points[2], points[3])
-
-        footwork_analyser = sa.FootworkAnalyser(st.session_state["result"].person_state)
-
-        footwork_analyser.select_floor(
-            edge1=edge1,
-            edge2=edge2,
-        )
-
-        st.session_state["footwork_analyser"] = footwork_analyser
-
-        st.success("Floor selected.")
-
-    else:
-        st.info(f"Select {4 - len(points)} more point(s).")
-else:
-    st.info("Draw two lines along the floor edges.")
-
-
-# ============================================================
 # Annotated video
 # ============================================================
 
@@ -545,16 +461,133 @@ if "guard_stats" in st.session_state:
 
 
     # --------------------------------------------------------
-    # Every drop
+    # Every guard drop
     # --------------------------------------------------------
 
-    if guard_drops:
+    if not guard_drops.empty:
         st.caption("Every guard drop, in the order they happened.")
 
         st.dataframe(
             guard_drops,
             hide_index=True,
         )
+
+
+# ============================================================
+# Floor selection
+# ============================================================
+
+if "result" in st.session_state:
+    st.subheader("Select floor corners")
+
+    st.write(
+        "Click the four corners of floor, "
+        "in this order: left-near, left-far, right-near, right-far."
+    )
+
+
+    frame = st.session_state["frame"]
+
+    # --------------------------------------------------------
+    # Resize frame for display while maintaining aspect ratio
+    # --------------------------------------------------------
+
+    display_frame = Image.fromarray(frame)
+
+    display_height = int(frame.shape[0] * DISPLAY_WIDTH / frame.shape[1])
+
+    display_frame = display_frame.resize((DISPLAY_WIDTH, display_height))
+
+    value = streamlit_image_coordinates(
+        display_frame,
+        key="floor",
+    )
+
+    if st.button("Clear points"):
+        st.session_state.pop("floor_points", None)
+        st.session_state.pop("floor", None)
+        st.rerun()
+
+    # --------------------------------------------------------
+    # Get floor edges
+    # --------------------------------------------------------
+
+    if "floor_points" not in st.session_state:
+        st.session_state.floor_points = []
+
+    if value is not None:
+        scale_x = frame.shape[1] / value["width"]
+        scale_y = frame.shape[0] / value["height"]
+
+        point = (value["x"] * scale_x, value["y"] * scale_y)
+
+        if not st.session_state.floor_points or (
+            point != st.session_state.floor_points[-1]
+        ):
+            st.session_state.floor_points.append(point)
+
+    points = st.session_state.floor_points
+
+    st.write(f"Selected {len(points)}/4 corners")
+
+    for i, point in enumerate(points, start=1):
+        st.write(f"Corner {i}: {point}")
+
+    # ----------------------------------------------------
+    # Create footwork analyser
+    # ----------------------------------------------------
+
+    if len(points) == 4:
+        edge1 = (points[0], points[1])
+        edge2 = (points[2], points[3])
+
+        footwork_analyser = sa.FootworkAnalyser(st.session_state["result"].person_state)
+
+        footwork_analyser.select_floor(
+            edge1=edge1,
+            edge2=edge2,
+        )
+
+        # ----------------------------------------------------
+        # Optional true-scale measurements
+        # ----------------------------------------------------
+
+        st.write(
+            "For true scale footwork analysis enter the real length of each side in metres"
+            ". Left = left-near to left-far, right = right-near "
+            "to right-far. If real lengths are not inputted, analysis will default to"
+            "using a unit square"
+        )
+
+        length_col1, length_col2 = st.columns(2)
+
+        with length_col1:
+            length1 = st.number_input(
+                "Left side length (m)",
+                min_value=0.0,
+                step=0.1,
+                key="floor_length1",
+            )
+
+        with length_col2:
+            length2 = st.number_input(
+                "Right side length (m)",
+                min_value=0.0,
+                step=0.1,
+                key="floor_length2",
+            )
+
+        if length1 > 0 and length2 > 0:
+            footwork_analyser.select_floor_edge_lengths_m(length1, length2)
+
+        st.session_state["footwork_analyser"] = footwork_analyser
+
+        st.success("Floor selected.")
+
+    else:
+        st.info(f"Click {4 - len(points)} more corner(s).")
+else:
+    st.info("Click the four corners of the fighting surface.")
 
 
 # ============================================================
