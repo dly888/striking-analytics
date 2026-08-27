@@ -11,8 +11,15 @@ RIGHT_FOOT_COLOUR = "#f72585"
 
 
 class FootworkPlotter:
-    def __init__(self, projector: FootworkProjector):
+    def __init__(
+        self,
+        projector: FootworkProjector,
+        left_ankle_keypoints,
+        right_ankle_keypoints,
+    ):
         self.projector = projector
+        self.left_ankle_keypoints = left_ankle_keypoints
+        self.right_ankle_keypoints = right_ankle_keypoints
 
     @staticmethod
     def floor_counts(points, bins, floor_size) -> np.ndarray:
@@ -95,7 +102,8 @@ class FootworkPlotter:
         """
         Plots a heatmap of where the person's feet spend time on the floor.
 
-        Assumes the projector has already run its projection.
+        Assumes the projector has already run its projection and that airborne
+        frames have been filtered out of the mapped keypoints.
 
         Args:
             bins: Number of bins along each axis of the floor
@@ -106,13 +114,9 @@ class FootworkPlotter:
         """
         projector = self.projector
 
-        # Drop frames where a foot is airborne
-        left_airborne, right_airborne = projector.get_foot_in_air_mask()
-
-        left = projector.mapped_left_ankle_keypoints.copy()
-        right = projector.mapped_right_ankle_keypoints.copy()
-        left[left_airborne] = np.nan
-        right[right_airborne] = np.nan
+        # Airborne frames were already dropped by FootworkAnalyser.filter_kicks
+        left = self.left_ankle_keypoints
+        right = self.right_ankle_keypoints
 
         both = np.vstack([left, right])
 
@@ -143,8 +147,15 @@ class FootworkPlotter:
         colour_bar = fig.colorbar(image, ax=ax, shrink=0.82, pad=0.03)
         colour_bar.set_label("Time spent (relative)", fontsize=10)
 
-        ax.set_xlabel("Across the front", fontsize=10)
-        ax.set_ylabel("Towards the back", fontsize=10)
+
+        if self.projector.true_scale_homography is None:
+            # Unit square default
+            ax.set_xlabel("Across the front", fontsize=10)
+            ax.set_ylabel("Towards the back", fontsize=10)
+        else:
+            ax.set_xlabel("Across the front (m)", fontsize=10)
+            ax.set_ylabel("Towards the back (m)", fontsize=10)
+
         ax.set_title(
             f"Footwork heatmap: {projector.person_state.person.name}",
             fontsize=13,

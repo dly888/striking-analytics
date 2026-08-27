@@ -1,7 +1,6 @@
 import cv2
 import numpy as np
 
-from .features import get_ankle_raise
 from .tracking import PersonState
 
 
@@ -236,22 +235,3 @@ class FootworkProjector:
         self.get_selected_corners()
         self.get_true_scale_homography()
         self.transform_keypoints_to_true_scale()
-
-    # ----------------------------------------------------
-    # Detections
-    # ----------------------------------------------------
-
-    def get_foot_in_air_mask(self, min_raise_m=0.15):
-        """
-        Get mask to determine whether each foot is in the air.
-
-        Args:
-            min_raise_m: Minimum ankle raise, in metres
-
-        Returns:
-            Tuple of (left_airborne, right_airborne) boolean arrays.
-        """
-        left_raise = get_ankle_raise(self.person_state, "left")
-        right_raise = get_ankle_raise(self.person_state, "right")
-
-        return left_raise > min_raise_m, right_raise > min_raise_m

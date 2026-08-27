@@ -332,7 +332,7 @@ def get_pixel_to_meter_ratio(
         state: PersonState,
 ) -> np.ndarray:
     """
-    Calculates pixel-to-meter conversion ratio for each frame.
+    Calculates pixel-to-meter conversion ratio for each frame in pixels per meter.
 
     Conversion estimated using user's height to approximate torso
     length .
