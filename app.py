@@ -597,6 +597,6 @@ else:
 if "footwork_analyser" in st.session_state:
     st.subheader("Footwork Analysis")
 
-    fig = st.session_state["footwork_analyser"].get_plot_figure()
+    fig = st.session_state["footwork_analyser"].get_heatmap_figure()
 
     st.pyplot(fig)

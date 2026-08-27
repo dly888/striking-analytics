@@ -23,6 +23,9 @@ from .features import (
     get_torso_length,
 )
 from .footwork_analysis import FootworkAnalyser
+from .footwork_projection import FootworkProjector
+from .footwork_plotting import FootworkPlotter
+from .footwork_stats import FootworkStats, FootworkStatsCalculator
 from .geometry import calculate_angles, count_segments, longest_nan_run, segment_bounds
 from .inspector import VelocityInspector
 from .pipeline import AnalysisResult, analyse_video, render_annotated_video
@@ -47,6 +50,10 @@ __all__ = [
     "GuardDetections",
     "StrikeDetections",
     "FootworkAnalyser",
+    "FootworkProjector",
+    "FootworkPlotter",
+    "FootworkStats",
+    "FootworkStatsCalculator",
     "Person",
     "PersonState",
     "PoseTracker",

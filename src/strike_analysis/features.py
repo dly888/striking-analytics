@@ -33,6 +33,7 @@ def last_valid_gaps(
                 calculated, i.e. the frame is visible and its previous valid
                 frame is within max_hold + 1.
     """
+
     frames = np.arange(len(visible))
 
     # For each frame store the most recent valid frame at or before it
@@ -50,7 +51,7 @@ def last_valid_gaps(
 
 
 def get_joint_speed(
-    state: PersonState, joint_name: str, strike_config: StrikeConfig
+        state: PersonState, joint_name: str, strike_config: StrikeConfig
 ) -> np.ndarray:
     """Calculate the speed of a joint in pixels per second.
 
@@ -89,10 +90,10 @@ def get_joint_speed(
 
 
 def get_joint_speed_peaks(
-    speed: np.ndarray,
-    threshold: np.ndarray,
-    max_speed: np.ndarray,
-    min_separation: int = 10,
+        speed: np.ndarray,
+        threshold: np.ndarray,
+        max_speed: np.ndarray,
+        min_separation: int = 10,
 ) -> ndarray:
     """
     Gets the peak values of the joint speeds tracked.
@@ -131,7 +132,7 @@ def get_joint_speed_peaks(
 
 
 def get_joint_rise_speed(
-    state: PersonState, name: str, config: StrikeConfig
+        state: PersonState, name: str, config: StrikeConfig
 ) -> np.ndarray:
     """Calculate the upward speed of a joint in pixels per second.
 
@@ -168,9 +169,9 @@ def get_joint_rise_speed(
 
 
 def get_wrist_angular_speed(
-    state: PersonState,
-    side: Side,
-    config: StrikeConfig,
+        state: PersonState,
+        side: Side,
+        config: StrikeConfig,
 ) -> np.ndarray:
     """Calculate wrist angular speed relative to the corresponding shoulder.
 
@@ -214,9 +215,9 @@ def get_wrist_angular_speed(
 
 
 def get_arm_sweep_speed(
-    state: PersonState,
-    side: Side,
-    config: StrikeConfig,
+        state: PersonState,
+        side: Side,
+        config: StrikeConfig,
 ) -> np.ndarray:
     """Calculate arm sweep speed relative to the shoulder line.
 
@@ -312,7 +313,7 @@ def get_torso_length(state: PersonState) -> np.ndarray:
     """
     shoulder_centre = (
                               state.positions("left_shoulder") + state.positions("right_shoulder")
-    ) / 2
+                      ) / 2
     hip_centre = (state.positions("left_hip") + state.positions("right_hip")) / 2
 
     torso_pixels = np.linalg.norm(
@@ -328,7 +329,7 @@ def get_torso_length(state: PersonState) -> np.ndarray:
 
 
 def get_pixel_to_meter_ratio(
-    state: PersonState,
+        state: PersonState,
 ) -> np.ndarray:
     """
     Calculates pixel-to-meter conversion ratio for each frame.
