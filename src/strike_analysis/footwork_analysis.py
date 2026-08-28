@@ -1,5 +1,6 @@
 import numpy as np
 
+from .config import FootworkConfig
 from .features import get_ankle_raise
 from .footwork_plotting import FootworkPlotter
 from .footwork_projection import FootworkProjector
@@ -16,8 +17,13 @@ class FootworkAnalyser:
     plotting to use.
     """
 
-    def __init__(self, person_state: PersonState):
+    def __init__(
+        self,
+        person_state: PersonState,
+        config: FootworkConfig | None = None,
+    ):
         self.person_state = person_state
+        self.config = config or FootworkConfig()
         self.projector = FootworkProjector(person_state)
 
         self.left_ankle_keypoints = None
@@ -60,17 +66,40 @@ class FootworkAnalyser:
 
     def filter_kicks(self):
         """
-        Store the mapped ankle keypoints with airborne frames removed.
+        Store the mapped ankle keypoints with kick frames removed.
         """
+        window = self.config.kick_filter_window
         left_airborne, right_airborne = self.get_foot_in_air_mask()
 
         left = self.projector.mapped_left_ankle_keypoints.copy()
         right = self.projector.mapped_right_ankle_keypoints.copy()
-        left[left_airborne] = np.nan
-        right[right_airborne] = np.nan
+
+        left[self.grow_mask(left_airborne, window)] = np.nan
+        right[self.grow_mask(right_airborne, window)] = np.nan
 
         self.left_ankle_keypoints = left
         self.right_ankle_keypoints = right
+
+    @staticmethod
+    def grow_mask(mask: np.ndarray, window: int) -> np.ndarray:
+        """
+        Grow a boolean frame mask by window frames on both side.
+
+        Args:
+            mask: Boolean array, one entry per frame.
+            window: Number of frames to expand each True by on each side.
+
+        Returns:
+            Boolean mask array to indicate which frames to ignore as footwork movement.
+        """
+        grown = mask.copy()
+
+        for idx in np.flatnonzero(mask):
+            start = max(0, idx - window)
+            end = min(len(mask), idx + window + 1)
+            grown[start:end] = True
+
+        return grown
 
     def get_footwork_stats(self, bins: int = 40) -> FootworkStats:
         """

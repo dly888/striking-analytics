@@ -376,6 +376,28 @@ def get_ankle_raise(state: PersonState, side: Side) -> np.ndarray:
     return (opposite_ankle_xy[:, 1] - ankle_xy[:, 1]) * pixel_to_m_ratio
 
 
+def get_ankle_above_hip(state: PersonState, side: Side) -> np.ndarray:
+    """
+    Height in metres of one ankle above the same side's hip for each frame.
+
+    Positive when the given side's ankle is higher off the ground than the
+    hip, as happens on a high kick.
+
+    Args:
+        state: PersonState object
+        side: Side whose ankle is measured against its hip
+
+    Returns:
+        Numpy array of the ankle height above the hip in metres for each frame.
+    """
+    ankle_xy = state.positions(f"{side}_ankle")
+    hip_xy = state.positions(f"{side}_hip")
+
+    pixel_to_m_ratio = get_pixel_to_meter_ratio(state)
+
+    return (hip_xy[:, 1] - ankle_xy[:, 1]) * pixel_to_m_ratio
+
+
 def get_speed_threshold(state: PersonState, speed_mps: float) -> np.ndarray:
     """
     Calculates a speed threshold based on a fixed real life speed.

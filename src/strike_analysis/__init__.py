@@ -1,6 +1,6 @@
 from .annotator import VideoAnnotator
 from .cache import TrackCache
-from .config import Config, DefenseConfig, StrikeConfig
+from .config import Config, DefenseConfig, FootworkConfig, StrikeConfig
 from .constants import (
     JOINT_NAMES,
     KEYPOINT_INDEX,
@@ -47,6 +47,7 @@ __all__ = [
     "AnalysisResult",
     "Config",
     "DefenseConfig",
+    "FootworkConfig",
     "GuardDetections",
     "StrikeDetections",
     "FootworkAnalyser",

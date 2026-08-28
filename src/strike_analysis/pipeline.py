@@ -4,6 +4,8 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
+import numpy as np
+
 from .annotator import VideoAnnotator
 from .cache import TrackCache
 from .config import Config, StrikeConfig
@@ -94,6 +96,7 @@ def render_annotated_video(
     video_path: Path,
     output_path: Path,
     config: Config,
+    distance_per_frame: np.ndarray | None = None,
 ) -> None:
     """
     Creates video with the tracking and strikes drawn on it.
@@ -103,7 +106,13 @@ def render_annotated_video(
         video_path: Path of the video file.
         output_path: Path of the new annotated video file.
         config: Config object.
+        distance_per_frame: Optional cumulative distance travelled
     """
     annotator = VideoAnnotator(config=config)
-    annotator.add_tracker(result.person_state, result.strike_detections, guard_detections=result.guard_detections)
+    annotator.add_tracker(
+        result.person_state,
+        result.strike_detections,
+        guard_detections=result.guard_detections,
+        distance_per_frame=distance_per_frame,
+    )
     annotator.annotate_video(video_path=video_path, new_file_path=output_path)

@@ -14,62 +14,92 @@ from .constants import KEYPOINT_INDEX, N_KEYPOINTS, Stance
 from .video import get_fps
 
 
-def smooth_keypoints(
-    keypoints: np.ndarray,
-    window: int,
+def apply_kalman_filter(
+        keypoints: np.ndarray,
+        fps: float,
 ) -> np.ndarray:
     """
-    Smooth keypoints positions over time
+    Applies a Kalman filter to the xy position of every keypoint.
 
     Args:
-        keypoints: Keypoints to be smoothed
-        window: Size of the window where keypoints will be smoothed
+        keypoints: Array of shape (frames, N_KEYPOINTS, 3)
+                   containing x, y, confidence.
+        fps: Video FPS.
 
     Returns:
-        Numpy array of the smoothed keypoints
+        Kalman-filtered keypoints of the same shape.
     """
-    if window <= 1:
-        return keypoints
 
-    if window % 2 == 0:
-        raise ValueError("Smoothing window must be odd.")
+    dt = 1 / fps
 
-    smoothed = keypoints.copy()
-    kernel = np.ones(window, dtype=float)
+    filtered = keypoints.copy()
 
-    for keypoint_idx in range(keypoints.shape[1]):
-        for axis in range(2):  # x and y only
-            values = keypoints[:, keypoint_idx, axis]
-            visible = np.isfinite(values)
+    for keypoint_idx in range(N_KEYPOINTS):
 
-            # Replace NaNs with zero
-            values_filled = np.where(visible, values, 0.0)
+        positions = keypoints[:, keypoint_idx, :2]
 
-            # Sum of valid values in each window
-            num = np.convolve(
-                values_filled,
-                kernel,
-                mode="same",
-            )
+        # Find first valid observation
+        valid = ~np.isnan(positions).any(axis=1)
 
-            # Number of valid values in each window
-            den = np.convolve(
-                visible.astype(float),
-                kernel,
-                mode="same",
-            )
+        if not valid.any():
+            continue
 
-            result = np.full_like(values, np.nan, dtype=float)
+        first_idx = np.flatnonzero(valid)[0]
+        x0, y0 = positions[first_idx]
 
-            valid = den > 0
-            result[valid] = num[valid] / den[valid]
+        kf = cv2.KalmanFilter(4, 2)
 
-            # Dont fill originally missing observations.
-            result[~visible] = np.nan
+        kf.statePost = np.array(
+            [[x0], [y0], [0], [0]],
+            dtype=np.float32,
+        )
 
-            smoothed[:, keypoint_idx, axis] = result
+        kf.transitionMatrix = np.array([
+            [1, 0, dt, 0],
+            [0, 1, 0, dt],
+            [0, 0, 1,  0],
+            [0, 0, 0,  1],
+        ], dtype=np.float32)
 
-    return smoothed
+        kf.measurementMatrix = np.array([
+            [1, 0, 0, 0],
+            [0, 1, 0, 0],
+        ], dtype=np.float32)
+
+        sigma_a = 100.0
+
+        kf.processNoiseCov = sigma_a ** 2 * np.array([
+            [dt ** 4 / 4, 0,          dt ** 3 / 2, 0],
+            [0,            dt ** 4 / 4, 0,          dt ** 3 / 2],
+            [dt ** 3 / 2, 0,          dt ** 2,     0],
+            [0,            dt ** 3 / 2, 0,          dt ** 2],
+        ], dtype=np.float32)
+
+        kf.measurementNoiseCov = np.eye(2, dtype=np.float32) * 10
+
+        kf.errorCovPost = np.diag([
+            10,
+            10,
+            1000,
+            1000,
+        ]).astype(np.float32)
+
+        for frame_idx in range(first_idx, len(keypoints)):
+
+            position = positions[frame_idx]
+
+            prediction = kf.predict()
+
+            if np.isnan(position).any():
+                continue
+
+            measurement = position.reshape(2, 1).astype(np.float32)
+
+            estimate = kf.correct(measurement)
+
+            filtered[frame_idx, keypoint_idx, :2] = estimate[:2, 0]
+
+    return filtered
 
 
 @dataclass(frozen=True)
@@ -119,7 +149,7 @@ class PoseTracker:
     """
 
     def __init__(
-        self, person: Person, config: Config, model_name: str = "yolo26s-pose.pt"
+            self, person: Person, config: Config, model_name: str = "yolo26s-pose.pt"
     ):
         self.person_states: dict[int, PersonState] = {}
         self.model = YOLO(model_name)
@@ -148,9 +178,9 @@ class PoseTracker:
         raise ValueError("Person not tracked.")
 
     def track(
-        self,
-        video_path: Path,
-        track_progress: Callable[[int, int], None] | None = None,
+            self,
+            video_path: Path,
+            track_progress: Callable[[int, int], None] | None = None,
     ) -> None:
         """
         Runs model on video and tracks the state(boxes, keypoints) of the person in the video.
@@ -197,16 +227,16 @@ class PoseTracker:
                 )
 
         self.person_states = {
-            track_id: self._densify(track_id, frames, frames_processed, fps)
+            track_id: self.densify(track_id, frames, frames_processed, fps)
             for track_id, frames in detections.items()
         }
 
-    def _densify(
-        self,
-        track_id: int,
-        frames: dict[int, tuple],
-        frames_processed: int,
-        fps: float,
+    def densify(
+            self,
+            track_id: int,
+            frames: dict[int, tuple],
+            frames_processed: int,
+            fps: float,
     ) -> PersonState:
         """
         Converts data tracked from model into PersonTrack object.
@@ -235,9 +265,9 @@ class PoseTracker:
 
         keypoints[keypoints[:, :, 2] < self.config.keypoint_conf] = np.nan
 
-        keypoints = smooth_keypoints(
-            keypoints,
-            window=self.config.keypoint_smoothing_window,
+        keypoints = apply_kalman_filter(
+            keypoints=keypoints,
+            fps=fps,
         )
 
         # Currently assigns the same Person object to every tracked fighter, change this later

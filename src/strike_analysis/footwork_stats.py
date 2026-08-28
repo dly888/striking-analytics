@@ -2,6 +2,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
+from .config import FootworkConfig
 from .footwork_projection import FootworkProjector
 from .tracking import PersonState
 
@@ -11,6 +12,8 @@ class FootworkStats:
     floor_coverage: float
     stance_width_mean: float
     stance_width_std_dev: float
+    distance_travelled: float
+    distance_travelled_cumsum: np.ndarray
 
 
 class FootworkStatsCalculator:
@@ -25,7 +28,6 @@ class FootworkStatsCalculator:
         self.person_state = person_state
         self.projector = projector
         self.bins = bins
-
         self.floor_size = projector.get_floor_size()
         self.left_ankle_keypoints = left_ankle_keypoints
         self.right_ankle_keypoints = right_ankle_keypoints
@@ -41,7 +43,9 @@ class FootworkStatsCalculator:
         return FootworkStats(
             floor_coverage=self.get_floor_coverage(),
             stance_width_mean=self.get_stance_width_mean(),
-            stance_width_std_dev=self.get_stance_width_standard_deviation()
+            stance_width_std_dev=self.get_stance_width_standard_deviation(),
+            distance_travelled=self.get_total_distance_travelled(),
+            distance_travelled_cumsum=self.get_distance_travelled_cumsum()
         )
 
     def get_floor_counts(self) -> np.ndarray:
@@ -77,23 +81,41 @@ class FootworkStatsCalculator:
 
         return float(coverage)
 
-    def get_distance_travelled(self) -> tuple[float, float]:
+    def get_total_distance_travelled(self) -> float:
         """
-        Get the total distance each ankle travels across the video.
-
-        Skips steps where a position is missing.
+        Get the final distance travelled throughout the video.
 
         Returns:
-            Tuple of (left, right) distance travelled.
+            The final total distance travelled by the fighter
         """
-        left_steps = np.linalg.norm(
-            np.diff(self.left_ankle_keypoints[:, :2], axis=0), axis=1
-        )
-        right_steps = np.linalg.norm(
-            np.diff(self.right_ankle_keypoints[:, :2], axis=0), axis=1
-        )
+        return self.get_distance_travelled_cumsum()[-1]
 
-        return float(np.nansum(left_steps)), float(np.nansum(right_steps))
+    def get_distance_travelled_cumsum(self) -> np.ndarray:
+        """
+        Cumulative distance travelled by the fighter at each frame.
+
+        Travel is measured from the midpoint of the two ankles,
+        A threshold is applied to midpoint movement to ignore
+        jitters being considered as travel.
+
+        Returns:
+            Array of the cumulative distance travelled, one entry per frame.
+        """
+        left = self.left_ankle_keypoints[:, :2]
+        right = self.right_ankle_keypoints[:, :2]
+
+        # Use midpoint to track distance travel, need both ankles
+        # to be non NaN
+        centre = (left + right) / 2
+
+        steps = np.linalg.norm(np.diff(centre, axis=0), axis=1)
+
+        # Jitters of less than 5cm per frame are ignored
+        steps = np.where(steps >= FootworkConfig.step_threshold, steps, 0.0)
+        steps = np.nan_to_num(steps)
+
+        # Match with the video frame count
+        return np.concatenate([[0.0], np.cumsum(steps)])
 
     def get_stance_width_mean(self) -> float:
         """

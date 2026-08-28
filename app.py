@@ -1,5 +1,7 @@
+import os
 import tempfile
 from pathlib import Path
+from uuid import uuid4
 
 import cv2
 import numpy as np
@@ -272,7 +274,10 @@ if st.button("Analyse"):
     # Render annotated video
     # --------------------------------------------------------
 
-    annotated_video_path = video_path.parent / f"annotated_{video_path.name}"
+    # Always write .mp4 so the H.264 encoder is used and the browser can
+    # play it. Keeping the upload's suffix (e.g. .avi) forces the mp4v
+    # fallback, which shows as a frozen still frame.
+    annotated_video_path = video_path.parent / f"annotated_{video_path.stem}.mp4"
 
     sa.render_annotated_video(
         result=result,
@@ -323,6 +328,7 @@ if st.button("Analyse"):
     st.session_state.pop("floor_points", None)
     st.session_state.pop("floor", None)
     st.session_state.pop("footwork_analyser", None)
+    st.session_state.pop("footwork_output", None)
 
 # ============================================================
 # Annotated video
@@ -595,8 +601,98 @@ else:
 # ============================================================
 
 if "footwork_analyser" in st.session_state:
+    footwork_analyser = st.session_state["footwork_analyser"]
+
     st.subheader("Footwork Analysis")
 
-    fig = st.session_state["footwork_analyser"].get_heatmap_figure()
+    st.caption(
+        "Render the footwork stats, heatmap, and an annotated video."
+    )
 
-    st.pyplot(fig)
+    if st.button("Render footwork"):
+        with st.spinner("Rendering footwork..."):
+            footwork_stats = footwork_analyser.get_footwork_stats()
+
+            # Stance width is in metres only when real edge lengths were
+            # inputted, otherwise it defaults to the unit square.
+            true_scale = footwork_analyser.projector.floor_edge_lengths is not None
+
+            fig = footwork_analyser.get_plot_figure()
+
+            video_path = st.session_state["video_path"]
+            final_path = video_path.parent / f"footwork_{video_path.stem}.mp4"
+
+            # Write to a unique temp file and swap it in only once complete,
+            # so a partial render is never what gets played.
+            tmp_path = video_path.parent / f"footwork_{uuid4().hex}.mp4"
+
+            sa.render_annotated_video(
+                result=st.session_state["result"],
+                video_path=video_path,
+                output_path=tmp_path,
+                config=CONFIG,
+                distance_per_frame=footwork_stats.distance_travelled_cumsum,
+            )
+            os.replace(tmp_path, final_path)
+
+            st.session_state["footwork_output"] = {
+                "stats": footwork_stats,
+                "width_unit": "m" if true_scale else "sq",
+                "figure": fig,
+                "video": str(final_path),
+            }
+
+    footwork_output = st.session_state.get("footwork_output")
+
+    if footwork_output is not None:
+        footwork_stats = footwork_output["stats"]
+        width_unit = footwork_output["width_unit"]
+
+        # ----------------------------------------------------
+        # Stats
+        # ----------------------------------------------------
+
+        st.subheader("Footwork Stats")
+
+        coverage_col, width_col, width_std_col, distance_travelled_col = st.columns(4)
+
+        coverage_col.metric(
+            "Floor coverage",
+            f"{footwork_stats.floor_coverage:.0%}",
+        )
+        width_col.metric(
+            "Mean stance width",
+            f"{footwork_stats.stance_width_mean:.2f} {width_unit}",
+        )
+        width_std_col.metric(
+            "Stance width variation",
+            f"{footwork_stats.stance_width_std_dev:.2f} {width_unit}",
+        )
+        distance_travelled_col.metric(
+            "Distance travelled",
+            f"{footwork_stats.distance_travelled_cumsum[-1]:.2f} {width_unit}",
+        )
+
+        st.caption(
+            "Stance width is in meters if edge lengths are inputted, "
+            "otherwise it defaults to a 1 by 1 unit square."
+        )
+
+        # ----------------------------------------------------
+        # Annotated video with the distance travelled shown
+        # ----------------------------------------------------
+
+        st.subheader("Footwork video")
+
+        st.caption("The running distance travelled is shown top-left.")
+
+        if Path(footwork_output["video"]).exists():
+            st.video(footwork_output["video"])
+
+        # ----------------------------------------------------
+        # Heatmap
+        # ----------------------------------------------------
+
+        st.subheader("Footwork Heatmap")
+
+        st.pyplot(footwork_output["figure"])

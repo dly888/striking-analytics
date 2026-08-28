@@ -19,10 +19,16 @@ class VideoAnnotator:
     """
 
     def __init__(self, config: Config):
-        self.person_detections: list[tuple[PersonState, StrikeDetections, np.ndarray, GuardDetections]] = []
+        self.person_detections: list[tuple[PersonState, StrikeDetections, np.ndarray, GuardDetections, np.ndarray | None]] = []
         self.config = config
 
-    def add_tracker(self, states: PersonState, strike_detections: StrikeDetections, guard_detections: GuardDetections):
+    def add_tracker(
+        self,
+        states: PersonState,
+        strike_detections: StrikeDetections,
+        guard_detections: GuardDetections,
+        distance_per_frame: np.ndarray
+    ):
         """
         Adds a PersonTrack object for VideoAnnotater to include in the video annotations.
 
@@ -30,6 +36,7 @@ class VideoAnnotator:
             states: PersonTrack object
             strike_detections: StrikeDetections object
             guard_detections: GuardDetections object
+            distance_per_frame: Cumulative distance travelled
         """
 
         self.person_detections.append(
@@ -37,7 +44,8 @@ class VideoAnnotator:
                 states,
                 strike_detections.expanded(),
                 strike_detections.combo_frame_mask(states.fps),
-                guard_detections.expanded()
+                guard_detections.expanded(),
+                distance_per_frame,
             )
         )
 
@@ -47,6 +55,7 @@ class VideoAnnotator:
         strike_detections: StrikeDetections,
         guard_detections: GuardDetections,
         frame,
+        distance_per_frame: np.ndarray,
         frame_idx: int,
         combo_frame_mask: np.ndarray | None = None,
     ):
@@ -64,6 +73,7 @@ class VideoAnnotator:
             frame_idx: The index in which the frame appears in the video
             combo_frame_mask: Boolean array with one entry per frame,
                 True on the frames a combo is thrown on.
+            distance_per_frame: Cumulative distance travelled
         """
 
         box = person_state.boxes[frame_idx]
@@ -96,6 +106,17 @@ class VideoAnnotator:
             (0, 255, 0),
             2,
         )
+
+        if distance_per_frame is not None and frame_idx < len(distance_per_frame):
+            cv2.putText(
+                frame,
+                f"Dist: {distance_per_frame[frame_idx]:.2f}",
+                (50, 150),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                1,
+                (255, 255, 0),
+                2,
+            )
 
         # Output name of strike detected
         for row, strike in enumerate(strike_detections.active_at(frame_idx)):
@@ -194,7 +215,7 @@ class VideoAnnotator:
                     if not success:
                         break
 
-                    for track, strike_detections, combo_frame_mask, guard_detections in self.person_detections:
+                    for track, strike_detections, combo_frame_mask, guard_detections, distance_per_frame in self.person_detections:
                         if frame_idx >= track.frames_processed:
                             continue
 
@@ -205,6 +226,7 @@ class VideoAnnotator:
                             frame=frame,
                             frame_idx=frame_idx,
                             combo_frame_mask=combo_frame_mask,
+                            distance_per_frame=distance_per_frame,
                         )
 
                     write_frame(frame)

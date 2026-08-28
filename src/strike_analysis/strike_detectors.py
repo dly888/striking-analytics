@@ -5,6 +5,7 @@ import numpy as np
 from .config import StrikeConfig
 from .strike_detections import Strike
 from .features import (
+    get_ankle_above_hip,
     get_ankle_raise,
     get_arm_sweep_speed,
     get_joint_angle,
@@ -164,7 +165,6 @@ def detect_hook(
         ):
             detections[peak] = True
 
-
     detections = merge_nearby_detections(detections, min_separation=10)
 
     return detections
@@ -248,7 +248,6 @@ def detect_uppercut(
         ):
             detections[peak] = True
 
-
     detections = merge_nearby_detections(detections, min_separation=strike_config.min_punch_peak_separation_frames)
 
     return detections
@@ -316,6 +315,11 @@ def detect_kick(
 
     foot_lifted = ankle_raise > strike_config.min_kick_ankle_raise_m
 
+    # A foot swung well above the hip is detected as a kick,
+    # even if the shin angle condition is not met.
+    foot_above_hip = get_ankle_above_hip(state, side)
+    foot_high = foot_above_hip > strike_config.min_kick_foot_above_hip_m
+
     detections = np.full(len(strike_foot_speed), fill_value=False)
 
     for peak in strike_foot_speed_peaks:
@@ -324,12 +328,14 @@ def detect_kick(
             min(len(strike_foot_speed), peak + 11),
         )
 
-        if np.any(
-                (angle_between_shins[window] > strike_config.angle_between_shins_threshold)
-                & (strike_foot_speed[peak] > pivot_foot_speed[peak])
-                & foot_lifted[window]):
-            detections[peak] = True
+        shin_angle_kick = (
+            (angle_between_shins[window] > strike_config.angle_between_shins_threshold)
+            & (strike_foot_speed[peak] > pivot_foot_speed[peak])
+            & foot_lifted[window]
+        )
 
+        if np.any(shin_angle_kick | foot_high[window]):
+            detections[peak] = True
 
     detections = merge_nearby_detections(detections, min_separation=strike_config.min_kick_peak_separation_frames)
 

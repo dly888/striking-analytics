@@ -10,6 +10,15 @@ class Config:
 
 
 @dataclass(frozen=True)
+class FootworkConfig:
+    # Window around a kick to not be considered as footwork movement
+    kick_filter_window: int = 10
+
+    # Minimum threshold for ankle movement to be considered a step and not jitter
+    step_threshold: float = 0.02
+
+
+@dataclass(frozen=True)
 class DefenseConfig:
     # How far below the shoulder the wrist has to fall for the guard to
     # count as dropped
@@ -20,12 +29,12 @@ class DefenseConfig:
 class StrikeConfig:
     # Straight punches
     straight_angle_threshold: float = 150.0  # Minimum angle to be considered a straight
-    min_straight_speed_mps: float = 2.0  # Minimum wrist speed in meters per second
+    min_straight_speed_mps: float = 1.5  # Minimum wrist speed in meters per second
     max_straight_speed_mps: float = 15.0
 
     # Hooks
     hook_sweep_speed_threshold: float = (
-        450.0  # Minimum sweep speed in degrees per second
+        150.0  # Minimum sweep speed in degrees per second
     )
     max_hook_sweep_speed: float = 2000.0  # Maximum sweep speed in degrees per second
     hook_elbow_angle_threshold: float = 100  # Maximum angle to be considered a hook
@@ -33,7 +42,7 @@ class StrikeConfig:
 
     # Uppercuts
     min_uppercut_speed_mps: float = (
-        3.5  # Minimum upward wrist speed in meters per second
+        2.5  # Minimum upward wrist speed in meters per second
     )
     max_uppercut_speed_mps: float = (
         15.0  # Maximum upward wrist speed in meters per second
@@ -54,9 +63,17 @@ class StrikeConfig:
     min_kick_ankle_raise_m: float = (
         0.25  # Minimum height of the kicking ankle above the pivot ankle in meters
     )
+    # A foot raised this far above the hip is a kick on its own, regardless of
+    # shin angle (e.g. head/body kicks that swing the foot up high)
+    min_kick_foot_above_hip_m: float = 0.15
     # A kick peaks once on the chamber and again on the extension, so the
     # two movements are further apart than a punches extension/retraction
     min_kick_peak_separation_frames: int = 20
+
+    # Punches in these windows before/after a kick are ignored
+    # in order to prevent arm swings being detected as punches
+    punch_suppression_before_kick_window: int = 12
+    punch_suppression_after_kick_window: int = 12
 
     # Other
     max_hold: int = 6
