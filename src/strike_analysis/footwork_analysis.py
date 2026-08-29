@@ -1,7 +1,8 @@
 import numpy as np
 
+from . import get_joint_angle
 from .config import FootworkConfig
-from .features import get_ankle_raise
+from .features import get_ankle_above_hip
 from .footwork_plotting import FootworkPlotter
 from .footwork_projection import FootworkProjector
 from .footwork_stats import FootworkStats, FootworkStatsCalculator
@@ -20,10 +21,10 @@ class FootworkAnalyser:
     def __init__(
         self,
         person_state: PersonState,
-        config: FootworkConfig | None = None,
+        footwork_config: FootworkConfig | None = None,
     ):
         self.person_state = person_state
-        self.config = config or FootworkConfig()
+        self.footwork_config = FootworkConfig()
         self.projector = FootworkProjector(person_state)
 
         self.left_ankle_keypoints = None
@@ -49,9 +50,12 @@ class FootworkAnalyser:
         """
         self.projector.select_floor_edge_lengths_m(length1, length2)
 
-    def get_foot_in_air_mask(self, min_raise_m=0.15):
+    def get_foot_in_air_mask(self):
         """
         Get mask to determine whether each foot is in the air.
+
+        Determines whether an ankle is raised based on whether it
+        is close enough to the corresponding hip joint.
 
         Args:
             min_raise_m: Minimum ankle raise, in metres
@@ -59,16 +63,32 @@ class FootworkAnalyser:
         Returns:
             Tuple of (left_airborne, right_airborne) boolean arrays.
         """
-        left_raise = get_ankle_raise(self.person_state, "left")
-        right_raise = get_ankle_raise(self.person_state, "right")
+        left_raise = get_ankle_above_hip(self.person_state, "left")
+        right_raise = get_ankle_above_hip(self.person_state, "right")
 
-        return left_raise > min_raise_m, right_raise > min_raise_m
+        left_knee_angle = get_joint_angle(self.person_state,
+                                          "left_ankle",
+                                          "left_knee",
+                                          "left_hip")
 
-    def filter_kicks(self):
+        right_knee_angle = get_joint_angle(self.person_state,
+                                          "right_ankle",
+                                          "right_knee",
+                                          "right_hip")
+
+        height_threshold = self.footwork_config.kick_ankle_above_hip_m
+        check_angle_threshold = self.footwork_config.check_angle
+
+        left_mask = (left_raise > height_threshold) | (left_knee_angle < check_angle_threshold)
+        right_mask = (right_raise > height_threshold) | (right_knee_angle < check_angle_threshold)
+
+        return left_mask, right_mask
+
+    def filter_kick_and_check(self):
         """
         Store the mapped ankle keypoints with kick frames removed.
         """
-        window = self.config.kick_filter_window
+        window = self.footwork_config.kick_filter_window
         left_airborne, right_airborne = self.get_foot_in_air_mask()
 
         left = self.projector.mapped_left_ankle_keypoints.copy()
@@ -112,7 +132,7 @@ class FootworkAnalyser:
             FootworkStats object holding the footwork statistics.
         """
         self.projector.project_true_scale()
-        self.filter_kicks()
+        self.filter_kick_and_check()
 
         return FootworkStatsCalculator(
             self.person_state,
@@ -134,7 +154,7 @@ class FootworkAnalyser:
             Figure of the plot
         """
         self.projector.project_true_scale()
-        self.filter_kicks()
+        self.filter_kick_and_check()
 
         return FootworkPlotter(
             self.projector,

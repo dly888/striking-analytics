@@ -17,6 +17,11 @@ class FootworkConfig:
     # Minimum threshold for ankle movement to be considered a step and not jitter
     step_threshold: float = 0.02
 
+    # Minium height required for an ankle to be a kick
+    kick_ankle_above_hip_m: float = -0.3
+
+    # Maximum angle for a knee to be a check
+    check_angle: int = 100
 
 @dataclass(frozen=True)
 class DefenseConfig:

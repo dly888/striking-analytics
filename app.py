@@ -613,6 +613,23 @@ if "footwork_analyser" in st.session_state:
         with st.spinner("Rendering footwork..."):
             footwork_stats = footwork_analyser.get_footwork_stats()
 
+            # TEMP DEBUG
+            import numpy as np
+
+            _fa = footwork_analyser
+            _st = _fa.person_state
+            for _s in ("left", "right"):
+                _a = _st.positions(f"{_s}_ankle")
+                print(f"[diag] {_s} ankle finite POST-KALMAN (pre-filter): "
+                      f"{int(np.isfinite(_a[:, 0]).sum())}/{len(_a)}")
+            _la, _ra = _fa.get_foot_in_air_mask()
+            print(f"[diag] airborne-flagged frames  left={int(_la.sum())}  right={int(_ra.sum())}")
+            for _s, _arr in (("left", _fa.left_ankle_keypoints), ("right", _fa.right_ankle_keypoints)):
+                print(f"[diag] {_s} ankle finite POST-filter_kicks: {int(np.isfinite(_arr[:, 0]).sum())}")
+            _both = np.isfinite(_fa.left_ankle_keypoints[:, 0]) & np.isfinite(_fa.right_ankle_keypoints[:, 0])
+            print(f"[diag] frames with BOTH ankles finite after filtering: {int(_both.sum())}")
+            
+
             # Stance width is in metres only when real edge lengths were
             # inputted, otherwise it defaults to the unit square.
             true_scale = footwork_analyser.projector.floor_edge_lengths is not None
