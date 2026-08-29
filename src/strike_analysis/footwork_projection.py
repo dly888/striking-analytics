@@ -5,9 +5,14 @@ from .tracking import PersonState
 
 
 class FootworkProjector:
-    def __init__(self, person_state: PersonState):
+    def __init__(self, person_state: PersonState, principal_point=None):
         # Person data
         self.person_state = person_state
+
+        self.principal_point = (
+            None if principal_point is None
+            else np.asarray(principal_point, dtype=np.float64)
+        )
         self.mapped_right_ankle_keypoints = None
         self.mapped_left_ankle_keypoints = None
         self.left_ankle_keypoints = person_state.positions("left_ankle")
@@ -95,25 +100,91 @@ class FootworkProjector:
         if self.floor_edge_lengths is None:
             raise ValueError("Please select the floor edge lengths first.")
 
-        near1, near2, far2, far1 = self.floor_corners
         length1, length2 = self.floor_edge_lengths
 
-        # Pixel lengths of the selected edges
-        depth1_pixel_length = np.linalg.norm(far1 - near1)
-        depth2_pixel_length = np.linalg.norm(far2 - near2)
-        near_pixel_length = np.linalg.norm(near2 - near1)
-        far_pixel_length = np.linalg.norm(far2 - far1)
-
-        # Scale using the real length inputs
-        metres_per_pixel = (length1 + length2) / (depth1_pixel_length + depth2_pixel_length)
-
         depth_m = (length1 + length2) / 2
-        width_m = (near_pixel_length + far_pixel_length) / 2 * metres_per_pixel
+        width_m = self.recover_width_m(depth_m)
 
         self.true_scale_corners = np.array(
             [[0, 0], [width_m, 0], [width_m, depth_m], [0, depth_m]],
             dtype=np.float64,
         )
+
+    def recover_width_m(self, depth_m: float) -> float:
+        """
+        Recover the floor's width in metres from its four traced corners.
+
+        Falls back to the raw pixel aspect ratio when the principal point is
+        unknown, or when the geometry is too close to fronto-parallel for the
+        focal length to be identified. That fallback is
+        exact only when there is no perspective.
+        """
+        near1, near2, far2, far1 = self.floor_corners.astype(np.float64)
+
+        # Take the averages of the lengths
+        width_px = (
+            np.linalg.norm(near2 - near1) + np.linalg.norm(far2 - far1)
+        ) / 2
+
+        depth_px = (
+            np.linalg.norm(far1 - near1) + np.linalg.norm(far2 - near2)
+        ) / 2
+
+        affine_width_m = width_px / depth_px * depth_m
+
+        if self.principal_point is None:
+            return affine_width_m
+
+        # Centre the image points on the principal point and work in
+        # homogeneous coordinates.
+        cx, cy = self.principal_point
+        h1, h2, h3, h4 = (
+            np.array([x - cx, y - cy, 1.0])
+            for x, y in (near1, near2, far2, far1)
+        )
+
+        # Vanishing points of the width edges and the depth edges
+        vw = np.cross(np.cross(h1, h2), np.cross(h4, h3))
+        vd = np.cross(np.cross(h1, h4), np.cross(h2, h3))
+
+        # A vanishing point at infinity means that edge pair is parallel in the
+        # image: no perspective in that direction and the focal length is not
+        # identifiable, so fall back.
+        near_parallel = abs(vw[2]) < 1e-9 * np.linalg.norm(vw[:2]) or abs(
+            vd[2]
+        ) < 1e-9 * np.linalg.norm(vd[:2])
+        if near_parallel:
+            return affine_width_m
+
+        # The width and depth world directions are orthogonal, which fixes the
+        # squared focal length. A non-positive value means the corners cannot
+        # come from a rectangle under this camera model.
+        f_squared = -(vw[0] * vd[0] + vw[1] * vd[1]) / (vw[2] * vd[2])
+        if f_squared <= 0:
+            return affine_width_m
+
+        f = np.sqrt(f_squared)
+        k_inv = np.diag([1.0 / f, 1.0 / f, 1.0])
+
+        # Back-project the corners onto the floor plane (fixed at n . X = 1;
+        # the plane's normal is orthogonal to both in-plane directions). The
+        # ratio of world side lengths is independent of that fixed scale.
+        normal = np.cross(k_inv @ vw, k_inv @ vd)
+
+        def back_project(h):
+            ray = k_inv @ h
+            return ray / (normal @ ray)
+
+        p1, p2, p3, p4 = (back_project(h) for h in (h1, h2, h3, h4))
+
+        width_world = (
+            np.linalg.norm(p2 - p1) + np.linalg.norm(p3 - p4)
+        ) / 2
+        depth_world = (
+            np.linalg.norm(p4 - p1) + np.linalg.norm(p3 - p2)
+        ) / 2
+
+        return width_world / depth_world * depth_m
 
     def get_true_scale_homography(self):
         """

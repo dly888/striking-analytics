@@ -10,6 +10,10 @@ from .geometry import calculate_angles
 from .tracking import PersonState
 
 
+# ============================================================================================================
+# Frame gap bridging
+# ============================================================================================================
+
 def last_valid_gaps(
     visible: np.ndarray,
     max_hold: int,
@@ -50,6 +54,10 @@ def last_valid_gaps(
     return previous, gap, measurable
 
 
+# ============================================================================================================
+# Joint speeds
+# ============================================================================================================
+
 def get_joint_speed(
         state: PersonState, joint_name: str, strike_config: StrikeConfig
 ) -> np.ndarray:
@@ -87,48 +95,6 @@ def get_joint_speed(
     speed[measurable] = distance * state.fps / gap[measurable]
 
     return speed
-
-
-def get_joint_speed_peaks(
-        speed: np.ndarray,
-        threshold: np.ndarray,
-        max_speed: np.ndarray,
-        min_separation: int = 10,
-) -> ndarray:
-    """
-    Gets the peak values of the joint speeds tracked.
-
-    A strike can cause two speed peaks due to retraction, extension or chambering.
-    Return every peak and let the strike detection function determine which is a
-    rectraction/extension.
-    Peaks greater than max_speed are considered glitches.
-
-
-    Args:
-        speed: Speed of the joint at each frame
-        threshold: Threshold to be considered a peak at each frame
-        max_speed: Maximum speed at which a detection will be considered a glitch
-        min_separation: Number of frames either side of a glitch spike that
-                        are dropped with it.
-    """
-    peaks, properties = find_peaks(
-        speed,
-        height=threshold,
-    )
-
-    # Filter out glitch spikes
-    valid = properties["peak_heights"] <= (
-        max_speed[peaks] if np.ndim(max_speed) else max_speed
-    )
-
-    # A glitch spike affects the keypoints around it, so any peak
-    # around it is considered a glitch too and ends up dropped wit it
-    glitches = peaks[~valid]
-    shadowed = np.any(
-        np.abs(peaks[:, None] - glitches[None, :]) <= min_separation, axis=1
-    ) if glitches.size else np.full(len(peaks), False)
-
-    return peaks[valid & ~shadowed]
 
 
 def get_joint_rise_speed(
@@ -277,6 +243,56 @@ def get_arm_sweep_speed(
     return sweep
 
 
+# ============================================================================================================
+# Speed peaks
+# ============================================================================================================
+
+def get_joint_speed_peaks(
+        speed: np.ndarray,
+        threshold: np.ndarray,
+        max_speed: np.ndarray,
+        min_separation: int = 10,
+) -> ndarray:
+    """
+    Gets the peak values of the joint speeds tracked.
+
+    A strike can cause two speed peaks due to retraction, extension or chambering.
+    Return every peak and let the strike detection function determine which is a
+    rectraction/extension.
+    Peaks greater than max_speed are considered glitches.
+
+
+    Args:
+        speed: Speed of the joint at each frame
+        threshold: Threshold to be considered a peak at each frame
+        max_speed: Maximum speed at which a detection will be considered a glitch
+        min_separation: Number of frames either side of a glitch spike that
+                        are dropped with it.
+    """
+    peaks, properties = find_peaks(
+        speed,
+        height=threshold,
+    )
+
+    # Filter out glitch spikes
+    valid = properties["peak_heights"] <= (
+        max_speed[peaks] if np.ndim(max_speed) else max_speed
+    )
+
+    # A glitch spike affects the keypoints around it, so any peak
+    # around it is considered a glitch too and ends up dropped wit it
+    glitches = peaks[~valid]
+    shadowed = np.any(
+        np.abs(peaks[:, None] - glitches[None, :]) <= min_separation, axis=1
+    ) if glitches.size else np.full(len(peaks), False)
+
+    return peaks[valid & ~shadowed]
+
+
+# ============================================================================================================
+# Joint angles
+# ============================================================================================================
+
 def get_joint_angle(track: PersonState, a: str, b: str, c: str) -> np.ndarray:
     """
     Gets the angle between three joints.
@@ -296,6 +312,10 @@ def get_joint_angle(track: PersonState, a: str, b: str, c: str) -> np.ndarray:
         track.positions(c),
     )
 
+
+# ============================================================================================================
+# Scale calibration
+# ============================================================================================================
 
 def get_torso_length(state: PersonState) -> np.ndarray:
     """
@@ -352,6 +372,10 @@ def get_pixel_to_meter_ratio(
     return ratio
 
 
+# ============================================================================================================
+# Ankle heights
+# ============================================================================================================
+
 def get_ankle_raise(state: PersonState, side: Side) -> np.ndarray:
     """
     Height in metres of one ankle above the opposite ankle for each frame.
@@ -397,6 +421,10 @@ def get_ankle_above_hip(state: PersonState, side: Side) -> np.ndarray:
 
     return (hip_xy[:, 1] - ankle_xy[:, 1]) * pixel_to_m_ratio
 
+
+# ============================================================================================================
+# Speed thresholds
+# ============================================================================================================
 
 def get_speed_threshold(state: PersonState, speed_mps: float) -> np.ndarray:
     """

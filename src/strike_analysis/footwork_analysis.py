@@ -22,10 +22,11 @@ class FootworkAnalyser:
         self,
         person_state: PersonState,
         footwork_config: FootworkConfig | None = None,
+        principal_point=None,
     ):
         self.person_state = person_state
         self.footwork_config = FootworkConfig()
-        self.projector = FootworkProjector(person_state)
+        self.projector = FootworkProjector(person_state, principal_point=principal_point)
 
         self.left_ankle_keypoints = None
         self.right_ankle_keypoints = None

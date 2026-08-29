@@ -17,6 +17,11 @@ from .features import (
 )
 from .tracking import PersonState
 
+
+# ============================================================================================================
+# Detection helpers
+# ============================================================================================================
+
 def merge_nearby_detections(detection_mask, min_separation) -> np.ndarray:
     merged = np.full(len(detection_mask), False)
     last_detection = None
@@ -26,6 +31,10 @@ def merge_nearby_detections(detection_mask, min_separation) -> np.ndarray:
             last_detection = frame_idx
     return merged
 
+
+# ============================================================================================================
+# Punch detection
+# ============================================================================================================
 
 def detect_straight(
         state: PersonState, strike: Strike, strike_config: StrikeConfig
@@ -252,6 +261,10 @@ def detect_uppercut(
 
     return detections
 
+
+# ============================================================================================================
+# Kick detection
+# ============================================================================================================
 
 def detect_kick(
         state: PersonState, strike: Strike, strike_config: StrikeConfig
