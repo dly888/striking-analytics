@@ -25,8 +25,12 @@ in `src/kickboxing_analysis` if you'd rather call it from Python.
 - Detects straights, hooks, uppercuts and kicks on both sides. When two fire at
   once a straight beats a hook, and arm-swings near a kick get suppressed so they
   don't count as punches.
-- Striking stats: counts, rates, peak speed in m/s, combos, a per-strike speed
-  timeline, a pacing histogram and a rhythm score.
+- Striking stats: counts, rates, peak and average speed in m/s, combos with
+  their average length and your most-thrown combinations, a lead/rear and
+  left/right hand balance, a punch/kick split, work-rate numbers (busiest
+  window, mean gap, longest rest, time to first strike), a per-strike speed
+  timeline, a pacing histogram, a rhythm score, and a fatigue read on how much
+  strike speed faded across the session.
 - Guard-drop detection for when both hands fall below the shoulders, with the
   time of each drop and the total guard-up time.
 - Footwork: the ankles get projected onto the floor for a movement heatmap, plus
@@ -190,7 +194,7 @@ Airborne frames get dropped before the heatmap and stats go together.
 | --- | --- |
 | Annotated video | Skeleton, box, strike, combo and guard labels, distance counter. |
 | Cache (`.npz`) | Keypoints, boxes and metadata, reused on the next run. |
-| `StrikingStats` | Counts, rates, max speeds, combos, rhythm, pacing, speed timelines. |
+| `StrikingStats` | Counts, rates, max and average speeds, combos and top sequences, hand balance, punch/kick mix, work rate, fatigue, rhythm, pacing, speed timelines. |
 | `GuardStats` | Guard-up time and percentage, drop count, per-drop timings. |
 | `FootworkStats` + figure | Floor coverage, stance width and its spread, distance, heatmap. |
 
