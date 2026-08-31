@@ -166,7 +166,7 @@ class StrikeDetections:
         """
         return count_segments(
             self.combo_mask(fps, min_frames),
-            min_length=2,
+            min_length=1,
         )
 
     def combo_frames(self, fps: float, min_frames: int = 1) -> np.ndarray:

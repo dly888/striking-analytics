@@ -28,6 +28,7 @@ class FootworkProjector:
         self.floor_edges = None
         self.floor_corners = None
         self.floor_edge_lengths = None
+        self.floor_width_m = None
         self.true_scale_corners = None
 
     # ----------------------------------------------------
@@ -55,6 +56,16 @@ class FootworkProjector:
             length2: Length of edge 2
         """
         self.floor_edge_lengths = np.array([length1, length2])
+
+    def select_floor_width_m(self, width: float):
+        """
+        Set the floor's real width in metres, measured across the near/far
+        edges.
+
+        Args:
+            width: Real width of the floor in metres.
+        """
+        self.floor_width_m = width
 
     def get_selected_corners(self):
         """
@@ -103,7 +114,12 @@ class FootworkProjector:
         length1, length2 = self.floor_edge_lengths
 
         depth_m = (length1 + length2) / 2
-        width_m = self.recover_width_m(depth_m)
+
+        # Default to width estimate if real width length is not known
+        if self.floor_width_m is not None:
+            width_m = self.floor_width_m
+        else:
+            width_m = self.recover_width_m(depth_m)
 
         self.true_scale_corners = np.array(
             [[0, 0], [width_m, 0], [width_m, depth_m], [0, depth_m]],

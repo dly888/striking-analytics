@@ -51,6 +51,17 @@ class FootworkAnalyser:
         """
         self.projector.select_floor_edge_lengths_m(length1, length2)
 
+    def select_floor_width_m(self, width: float):
+        """
+        Set the floor's real width in metres directly.
+
+        If no value is entered, width is estimated.
+
+        Args:
+            width: Real width of the floor in metres.
+        """
+        self.projector.select_floor_width_m(width)
+
     def get_foot_in_air_mask(self):
         """
         Get mask to determine whether each foot is in the air.

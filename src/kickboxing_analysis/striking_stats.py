@@ -1,12 +1,19 @@
+from collections import Counter
 from dataclasses import dataclass
 
 import numpy as np
 
 from .config import StrikeConfig
 from .constants import JOINT_NAMES, SIDES, STRIKE_TYPE_TO_JOINT, STRIKE_TYPES
-from .strike_detections import StrikeDetections
 from .features import get_joint_speed, get_pixel_to_meter_ratio
+from .strike_detections import StrikeDetections
 from .tracking import PersonState
+
+# Strikes thrown with the hand versus the leg, used to split the mix.
+PUNCH_TYPES: tuple[str, ...] = ("straight", "hook", "uppercut")
+KICK_TYPES: tuple[str, ...] = ("kick",)
+
+BUSIEST_WINDOW_S = 3.0
 
 
 @dataclass(frozen=True)
@@ -15,11 +22,31 @@ class StrikingStats:
     strike_counts: dict[str, float]
     strike_rates: dict[str, float]
     max_speeds_mps: dict[str, float]
+    avg_speeds_mps: dict[str, float]
     combo_count: int
     rhythm_cv: float
     pacing_bins: dict[float, int]
     strike_speeds: dict[str, np.ndarray]
     strike_times_s: dict[str, np.ndarray]
+
+    # Balance
+    side_counts: dict[str, int]
+    lead_rear_counts: dict[str, int]
+
+    # Mix
+    strike_mix: dict[str, int]
+    punch_count: int
+    kick_count: int
+
+    # Combos
+    avg_combo_length: float
+    longest_combo: int
+
+    # Work rate
+    mean_interval_s: float
+    longest_rest_s: float
+    busiest_window_size_s: float
+
 
 
 class StrikingStatsCalculator:
@@ -61,16 +88,30 @@ class StrikingStatsCalculator:
             rates, the maximum speeds, the combo count and the rhythm
             score for the video.
         """
+        side_counts = self.get_side_counts()
+        strike_mix = self.get_strike_mix()
+
         return StrikingStats(
             total_strikes=self.get_total_strikes(),
             strike_counts=self.strike_counts,
             strike_rates=self.get_strike_rate(),
             max_speeds_mps=self.max_speeds,
+            avg_speeds_mps=self.get_avg_speeds(),
             combo_count=self.combo_count,
             rhythm_cv=self.get_striking_rhythm(),
             pacing_bins=self.get_pacing_bins(),
             strike_speeds=self.strike_speeds,
             strike_times_s=self.get_strike_times(),
+            side_counts=side_counts,
+            lead_rear_counts=self.get_lead_rear_counts(side_counts),
+            strike_mix=strike_mix,
+            punch_count=sum(strike_mix[t] for t in PUNCH_TYPES),
+            kick_count=sum(strike_mix[t] for t in KICK_TYPES),
+            avg_combo_length=self.get_avg_combo_length(),
+            longest_combo=self.get_longest_combo(),
+            mean_interval_s=self.get_mean_strike_gap(),
+            longest_rest_s=self.get_longest_rest(),
+            busiest_window_size_s=BUSIEST_WINDOW_S,
         )
 
     # ============================================================
@@ -262,6 +303,85 @@ class StrikingStatsCalculator:
 
         return max_speeds
 
+    def get_avg_speeds(self) -> dict[str, float]:
+        """
+        Get the average peak speed recorded for each strike type.
+
+        Returns:
+            Dictionary containing the mean peak speed of each strike type
+            in metres per second. Types never detected are 0.
+        """
+        avg_speeds = {}
+
+        for strike_name, speeds in self.strike_speeds.items():
+            if not np.isfinite(speeds).any():
+                avg_speeds[strike_name] = 0.0
+                continue
+
+            avg_speeds[strike_name] = float(np.nanmean(speeds))
+
+        return avg_speeds
+
+    # ============================================================
+    # Balance statistics
+    # ============================================================
+
+    def get_side_counts(self) -> dict[str, int]:
+        """
+        Get how many strikes were thrown with each side.
+
+        Returns:
+            Dictionary mapping "left" and "right" to the number of
+            strikes thrown with that side.
+        """
+        counts = {side: 0 for side in SIDES}
+
+        for record in self.strike_records:
+            counts[record["side"]] += 1
+
+        return counts
+
+    def get_lead_rear_counts(self, side_counts: dict[str, int]) -> dict[str, int]:
+        """
+        Split the strike count into lead side and rear side.
+
+        Which hand leads depends on the stance: an orthodox fighter
+        leads with the left, a southpaw with the right.
+
+        Args:
+            side_counts: Strike counts keyed by side, from get_side_counts.
+
+        Returns:
+            Dictionary mapping "lead" and "rear" to the number of strikes
+            thrown with that side.
+        """
+        lead_side = "left" if self.person_state.person.stance == "orthodox" else "right"
+        rear_side = "right" if lead_side == "left" else "left"
+
+        return {
+            "lead": side_counts[lead_side],
+            "rear": side_counts[rear_side],
+        }
+
+    # ============================================================
+    # Mix statistics
+    # ============================================================
+
+    def get_strike_mix(self) -> dict[str, int]:
+        """
+        Get how many strikes of each type were thrown, summed over sides.
+
+        Returns:
+            Dictionary mapping each strike type to its total count across
+            both sides.
+        """
+        mix = {strike_type: 0 for strike_type in STRIKE_TYPES}
+
+        for record in self.strike_records:
+            mix[record["strike_type"]] += 1
+
+        return mix
+
     def get_striking_rhythm(self) -> float:
         """
         Gets a score to measure striking rhythm.
@@ -344,3 +464,113 @@ class StrikingStatsCalculator:
             that are part of a combo occur.
         """
         return self.detections.combo_frames(self.fps)
+
+    def get_combos(self) -> list[list[dict]]:
+        """
+        Group the strike records into the combos they belong to.
+
+        Returns:
+            List of combos, each a list of the strike records it holds,
+            in the order they were thrown.
+        """
+        mask = self.get_combo_mask()
+
+        if len(mask) == 0:
+            return []
+
+        combos = []
+        current = [self.strike_records[0]]
+
+        for i, linked in enumerate(mask):
+            if linked:
+                current.append(self.strike_records[i + 1])
+            else:
+                if len(current) >= 2:
+                    combos.append(current)
+                current = [self.strike_records[i + 1]]
+
+        if len(current) >= 2:
+            combos.append(current)
+
+        return combos
+
+    def get_avg_combo_length(self) -> float:
+        """
+        Get the average number of strikes in a combo.
+
+        Returns:
+            Mean strikes per combo, or 0 if no combos were thrown.
+        """
+        combos = self.get_combos()
+
+        if not combos:
+            return 0.0
+
+        return float(np.mean([len(combo) for combo in combos]))
+
+    def get_longest_combo(self) -> int:
+        """
+        Get the number of strikes in the longest combo.
+
+        Returns:
+            The strike count of the longest combo, or 0 if none was thrown.
+        """
+        combos = self.get_combos()
+
+        if not combos:
+            return 0
+
+        return max(len(combo) for combo in combos)
+
+
+    # ============================================================
+    # Work rate statistics
+    # ============================================================
+
+    def get_strike_times_s(self) -> np.ndarray:
+        """
+        Get the time of every strike in seconds, in order.
+
+        Returns:
+            Sorted numpy array of strike times in seconds.
+        """
+        return np.sort(self.strike_frames) / self.fps
+
+    def get_mean_strike_gap(self) -> float:
+        """
+        Get the average gap between one strike and the next.
+
+        Returns:
+            Mean interval in seconds, or 0 with fewer than two strikes.
+        """
+        times = self.get_strike_times_s()
+
+        if times.size < 2:
+            return 0.0
+
+        return float(np.mean(np.diff(times)))
+
+    def get_longest_rest(self) -> float:
+        """
+        Get the longest quiet gap between two strikes.
+
+        Returns:
+            Longest interval in seconds, or 0 with fewer than two strikes.
+        """
+        times = self.get_strike_times_s()
+
+        if times.size < 2:
+            return 0.0
+
+        return float(np.max(np.diff(times)))
+
+
+    # ============================================================
+    # Fatigue statistics
+    # ============================================================
+
+    def get_speed_decline(self) -> float:
+        """
+        Implement linear regression later
+        """
+        pass

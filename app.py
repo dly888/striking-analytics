@@ -45,6 +45,7 @@ def build_strike_table(stats: kba.StrikingStats) -> pd.DataFrame:
                     "Strike": f"{side.title()} {strike_type}",
                     "Count": int(stats.strike_counts[key]),
                     "Per sec": round(stats.strike_rates[key], 1),
+                    "Avg speed (m/s)": round(stats.avg_speeds_mps[key], 1),
                     "Max speed (m/s)": round(stats.max_speeds_mps[key], 1),
                 }
             )
@@ -264,8 +265,7 @@ if st.button("Analyse"):
     striking_stats = striking_stats_calculator.calculate_striking_stats()
 
     defense_stats_calculator = kba.DefenseStatsCalculator(
-        person_state=result.person_state,
-        guard_detections=result.guard_detections
+        person_state=result.person_state, guard_detections=result.guard_detections
     )
 
     guard_stats = defense_stats_calculator.calculate_guard_stats()
@@ -275,8 +275,7 @@ if st.button("Analyse"):
     # --------------------------------------------------------
 
     # Always write .mp4 so the H.264 encoder is used and the browser can
-    # play it. Keeping the upload's suffix (e.g. .avi) forces the mp4v
-    # fallback, which shows as a frozen still frame.
+    # play it
     annotated_video_path = video_path.parent / f"annotated_{video_path.stem}.mp4"
 
     kba.render_annotated_video(
@@ -376,6 +375,42 @@ if "stats" in st.session_state:
         st.markdown(RHYTHM_HELP)
 
     # --------------------------------------------------------
+    # Output and fatigue
+    # --------------------------------------------------------
+
+    punch_col, kick_col = st.columns(2)
+
+    punch_col.metric("Punches", striking_stats.punch_count)
+    kick_col.metric("Kicks", striking_stats.kick_count)
+
+
+    # --------------------------------------------------------
+    # Timing
+    # --------------------------------------------------------
+
+    gap_col, rest_col, longest_combo_col = st.columns(3)
+
+    gap_col.metric("Mean gap", f"{striking_stats.mean_interval_s:.1f} s")
+    rest_col.metric("Longest rest", f"{striking_stats.longest_rest_s:.1f} s")
+    longest_combo_col.metric("Longest combo", striking_stats.longest_combo)
+
+    # --------------------------------------------------------
+    # Lead / rear and left / right balance
+    # --------------------------------------------------------
+
+    lead = striking_stats.lead_rear_counts["lead"]
+    rear = striking_stats.lead_rear_counts["rear"]
+    thrown_total = lead + rear
+
+    if thrown_total:
+        st.caption(
+            f"Hand balance — lead {lead} ({lead / thrown_total:.0%}), "
+            f"rear {rear} ({rear / thrown_total:.0%}). "
+            f"Left {striking_stats.side_counts['left']}, "
+            f"right {striking_stats.side_counts['right']}."
+        )
+
+    # --------------------------------------------------------
     # Breakdown by strike type
     # --------------------------------------------------------
 
@@ -465,7 +500,6 @@ if "guard_stats" in st.session_state:
     guard_drops_col.metric("Guard drops", guard_stats.guard_drop_count)
     longest_col.metric("Longest drop", f"{longest_drop_s:.1f} s")
 
-
     # --------------------------------------------------------
     # Every guard drop
     # --------------------------------------------------------
@@ -490,7 +524,6 @@ if "result" in st.session_state:
         "Click the four corners of floor, "
         "in this order: left-near, left-far, right-near, right-far."
     )
-
 
     frame = st.session_state["frame"]
 
@@ -589,6 +622,24 @@ if "result" in st.session_state:
         if length1 > 0 and length2 > 0:
             footwork_analyser.select_floor_edge_lengths_m(length1, length2)
 
+        # Optional measured width
+        st.write(
+            "Optional: enter the real width (near edge, left-near to "
+            "right-near) in metres. Leave at 0 to estimate it from the video. "
+            "Enter it yourself when the mat edges look nearly parallel in the video,"
+            "rather than a trapezoid that narrows towards the back"
+        )
+
+        width_m = st.number_input(
+            "Front edge length / width (m)",
+            min_value=0.0,
+            step=0.1,
+            key="floor_width",
+        )
+
+        if width_m > 0:
+            footwork_analyser.select_floor_width_m(width_m)
+
         st.session_state["footwork_analyser"] = footwork_analyser
 
         st.success("Floor selected.")
@@ -608,9 +659,7 @@ if "footwork_analyser" in st.session_state:
 
     st.subheader("Footwork Analysis")
 
-    st.caption(
-        "Render the footwork stats, heatmap, and an annotated video."
-    )
+    st.caption("Render the footwork stats, heatmap, and an annotated video.")
 
     if st.button("Render footwork"):
         with st.spinner("Rendering footwork..."):
