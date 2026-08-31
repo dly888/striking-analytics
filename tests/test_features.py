@@ -1,17 +1,17 @@
-from collections.abc import Callable
+﻿from collections.abc import Callable
 
 import numpy as np
 import pytest
 
-from strike_analysis import (
+from kickboxing_analysis import (
     StrikeConfig,
     calculate_angles,
     get_joint_speed,
     get_pixel_to_meter_ratio,
     get_speed_threshold,
 )
-from strike_analysis.constants import KEYPOINT_INDEX
-from strike_analysis.features import (
+from kickboxing_analysis.constants import KEYPOINT_INDEX
+from kickboxing_analysis.features import (
     get_arm_sweep_speed,
     get_joint_speed_peaks,
 )

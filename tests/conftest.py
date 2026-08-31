@@ -1,9 +1,9 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import numpy as np
 import pytest
 
-from strike_analysis import Person, PersonState
+from kickboxing_analysis import Person, PersonState
 
 
 @pytest.fixture

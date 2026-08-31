@@ -1,8 +1,8 @@
-import numpy as np
+﻿import numpy as np
 import pytest
 
-from strike_analysis import StrikeConfig, get_joint_speed
-from strike_analysis.constants import KEYPOINT_INDEX
+from kickboxing_analysis import StrikeConfig, get_joint_speed
+from kickboxing_analysis.constants import KEYPOINT_INDEX
 
 
 @pytest.fixture()

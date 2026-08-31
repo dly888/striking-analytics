@@ -1,18 +1,18 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import numpy as np
 import pytest
 
-from strike_analysis import StrikeConfig
-from strike_analysis.constants import KEYPOINT_INDEX
-from strike_analysis.strike_detections import Strike
-from strike_analysis.strike_detectors import (
+from kickboxing_analysis import StrikeConfig
+from kickboxing_analysis.constants import KEYPOINT_INDEX
+from kickboxing_analysis.strike_detections import Strike
+from kickboxing_analysis.strike_detectors import (
     detect_hook,
     detect_kick,
     detect_straight,
     detect_uppercut,
 )
-from strike_analysis.strike_analysis import STRIKE_DETECTORS, StrikeAnalyser
+from kickboxing_analysis.strike_analysis import STRIKE_DETECTORS, StrikeAnalyser
 
 N_FRAMES = 60
 

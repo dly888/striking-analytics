@@ -2,8 +2,9 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from strike_analysis import PersonState, count_segments
-from strike_analysis.defense_detections import GuardDetections
+from .defense_detections import GuardDetections
+from .geometry import count_segments
+from .tracking import PersonState
 
 @dataclass(frozen=True)
 class GuardStats:

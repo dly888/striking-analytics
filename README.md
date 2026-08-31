@@ -10,10 +10,11 @@
 ![Tests](https://img.shields.io/badge/tests-pytest-0A9EDC.svg?logo=pytest&logoColor=white)
 ![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)
 
-Analyses a kickboxer's striking, defense and footwork from a video of a single
-fighter. It tracks the fighter's pose, detects the strikes they throw, flags
+Analyses a fighter's **shadowboxing** from a video — their striking, defence and
+footwork. It tracks the fighter's pose, detects the strikes they throw, flags
 when their guard drops, maps their footwork, and reports the results as
-statistics, a heatmap and an annotated video.
+statistics, a heatmap and an annotated video. Built for solo shadowboxing, so it
+expects one fighter in frame with no opponent, bag or pads.
 
 Everything is worked out from 2D pose keypoints, so there is no manual
 labelling. Real-world scale is taken from the fighter's own body: the torso
@@ -22,7 +23,7 @@ for each frame, so strike speeds come out in metres per second and stay
 comparable however far the fighter is from the camera.
 
 The main way to use it is the Streamlit app (`app.py`). The analysis code lives
-in `src/strike_analysis` and can also be called directly from Python.
+in `src/kickboxing_analysis` and can also be called directly from Python.
 
 ## Features
 
@@ -73,7 +74,7 @@ flowchart LR
 app.py                    # Streamlit app (main entry point)
 src/
 ├── download_clip.py      # Trims a YouTube clip with yt-dlp
-└── strike_analysis/      # Analysis library (the installed package)
+└── kickboxing_analysis/  # Analysis library (the installed package)
     ├── pipeline.py       # analyse_video / render_annotated_video
     ├── tracking.py       # PoseTracker, PersonState, Kalman filter
     ├── features.py       # Joint speeds, angles, scale calibration
@@ -89,13 +90,13 @@ models/                   # YOLO pose weights
 
 ## Installation
 
-Needs Python 3.14+ and [uv](https://docs.astral.sh/uv/):
+Needs Python 3.12+ and [uv](https://docs.astral.sh/uv/):
 
 ```bash
 uv sync
 ```
 
-This installs the `strike_analysis` package and its dependencies (`ultralytics`,
+This installs the `kickboxing_analysis` package and its dependencies (`ultralytics`,
 `opencv-python`, `numpy`, `scipy`, `pandas`, `matplotlib`, `seaborn`,
 `streamlit`).
 
@@ -121,37 +122,37 @@ To call it from Python:
 
 ```python
 from pathlib import Path
-import strike_analysis as sa
+import kickboxing_analysis as kba
 
-person = sa.Person(name="Fighter", height_m=1.83, wingspan_m=1.88,
-                   weight=66, stance="orthodox")
+person = kba.Person(name="Fighter", height_m=1.83, wingspan_m=1.88,
+                    weight=66, stance="orthodox")
 
-result = sa.analyse_video(
+result = kba.analyse_video(
     video_path=Path("clip.mp4"),
     person=person,
     cache_path=Path("outputs/clip.npz"),
     model="yolo26s-pose.pt",
-    config=sa.Config(),
-    strike_config=sa.StrikeConfig(),
+    config=kba.Config(),
+    strike_config=kba.StrikeConfig(),
 )
 
 for r in result.strike_records:          # the strikes thrown, in order
     print(f"{r['time_s']:.2f}s  {r['side']} {r['strike_type']}")
 
-stats = sa.StrikingStatsCalculator(
-    result.person_state, result.strike_detections, sa.StrikeConfig()
+stats = kba.StrikingStatsCalculator(
+    result.person_state, result.strike_detections, kba.StrikeConfig()
 ).calculate_striking_stats()
 ```
 
-`python -m strike_analysis.main` runs the same pipeline as a script, but with
+`python -m kickboxing_analysis.main` runs the same pipeline as a script, but with
 hard-coded paths and floor corners. Edit its `__main__` block to point at your
 own clip.
 
 ## Configuration
 
 The thresholds live in four frozen dataclasses in
-[config.py](src/strike_analysis/config.py). The defaults are set for ordinary
-kickboxing footage; pass your own instances into `analyse_video` to change them.
+[config.py](src/kickboxing_analysis/config.py). The defaults are set for ordinary
+shadowboxing footage; pass your own instances into `analyse_video` to change them.
 
 - `Config` is the pose tracking: the keypoint confidence cutoff and the
   smoothing window.
@@ -211,8 +212,9 @@ stats, and the floor projection under a couple of camera models.
 
 ## Limitations
 
-- One fighter at a time. It picks the most-tracked person, so it isn't meant for
-  sparring footage.
+- Built for shadowboxing: one fighter, no opponent, bag or pads. It picks the
+  most-tracked person, so sparring or bag-work footage with a second person or
+  object in frame isn't supported.
 - It's 2D and the detection is heuristic. The scale assumes an upright torso
   roughly facing the camera, and the detectors use fixed thresholds, so odd
   strikes can be missed and the kick suppression can drop a real punch thrown
