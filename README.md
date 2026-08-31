@@ -1,5 +1,15 @@
 # MMA Striking Detector
 
+![Python](https://img.shields.io/badge/python-3.12+-blue.svg)
+![YOLO](https://img.shields.io/badge/pose-YOLO26-00FFFF.svg)
+![PyTorch](https://img.shields.io/badge/PyTorch-EE4C2C.svg?logo=pytorch&logoColor=white)
+![OpenCV](https://img.shields.io/badge/OpenCV-5C3EE8.svg?logo=opencv&logoColor=white)
+![Streamlit](https://img.shields.io/badge/Streamlit-FF4B4B.svg?logo=streamlit&logoColor=white)
+![Docker](https://img.shields.io/badge/Docker-2496ED.svg?logo=docker&logoColor=white)
+![License](https://img.shields.io/badge/license-Apache%202.0-green.svg)
+![Tests](https://img.shields.io/badge/tests-pytest-0A9EDC.svg?logo=pytest&logoColor=white)
+![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)
+
 Analyses a kickboxer's striking, defense and footwork from a video of a single
 fighter. It tracks the fighter's pose, detects the strikes they throw, flags
 when their guard drops, maps their footwork, and reports the results as
@@ -218,3 +228,8 @@ uv run pytest          # tests
 uv run ruff check .    # lint
 uv run ruff format .   # format
 ```
+
+## License
+
+Licensed under the Apache License, Version 2.0. See [LICENSE](LICENSE) for the
+full text.
