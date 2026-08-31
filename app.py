@@ -10,18 +10,18 @@ import streamlit as st
 from PIL import Image
 from streamlit_image_coordinates import streamlit_image_coordinates
 
-import strike_analysis as sa
+import kickboxing_analysis as kba
 
 CACHE_DIR = Path("cache")
 MODEL = "yolo26s-pose.pt"
 DISPLAY_WIDTH = 800
 PACING_BIN_S = 5.0
 
-CONFIG = sa.Config()
-STRIKE_CONFIG = sa.StrikeConfig()
+CONFIG = kba.Config()
+STRIKE_CONFIG = kba.StrikeConfig()
 
 
-def build_strike_table(stats: sa.StrikingStats) -> pd.DataFrame:
+def build_strike_table(stats: kba.StrikingStats) -> pd.DataFrame:
     """
     Reshape the strike dictionaries into a table.
 
@@ -36,8 +36,8 @@ def build_strike_table(stats: sa.StrikingStats) -> pd.DataFrame:
     """
     rows = []
 
-    for side in sa.SIDES:
-        for strike_type in sa.STRIKE_TYPES:
+    for side in kba.SIDES:
+        for strike_type in kba.STRIKE_TYPES:
             key = f"{side}_{strike_type}"
 
             rows.append(
@@ -53,7 +53,7 @@ def build_strike_table(stats: sa.StrikingStats) -> pd.DataFrame:
 
 
 def build_guard_drop_table(
-    guard_detections: sa.GuardDetections,
+    guard_detections: kba.GuardDetections,
     fps: float,
 ) -> pd.DataFrame:
     """
@@ -69,7 +69,7 @@ def build_guard_drop_table(
     Returns:
         DataFrame with one row per guard drop.
     """
-    starts, ends = sa.segment_bounds(guard_detections.mask)
+    starts, ends = kba.segment_bounds(guard_detections.mask)
 
     return pd.DataFrame(
         {
@@ -82,7 +82,7 @@ def build_guard_drop_table(
 
 
 def build_guard_timeline(
-    guard_detections: sa.GuardDetections,
+    guard_detections: kba.GuardDetections,
     fps: float,
     bin_size_s: float = PACING_BIN_S,
 ) -> pd.DataFrame:
@@ -180,7 +180,7 @@ stance = st.selectbox(
 # Create fighter
 # ============================================================
 
-person = sa.Person(
+person = kba.Person(
     name=name,
     weight=weight,
     height_m=height,
@@ -238,7 +238,7 @@ if st.button("Analyse"):
     # Run analysis
     # --------------------------------------------------------
 
-    result = sa.analyse_video(
+    result = kba.analyse_video(
         video_path=video_path,
         person=person,
         cache_path=cache_path,
@@ -255,7 +255,7 @@ if st.button("Analyse"):
     # Calculate striking stats
     # --------------------------------------------------------
 
-    striking_stats_calculator = sa.StrikingStatsCalculator(
+    striking_stats_calculator = kba.StrikingStatsCalculator(
         person_state=result.person_state,
         detections=result.strike_detections,
         strike_config=STRIKE_CONFIG,
@@ -263,7 +263,7 @@ if st.button("Analyse"):
 
     striking_stats = striking_stats_calculator.calculate_striking_stats()
 
-    defense_stats_calculator = sa.DefenseStatsCalculator(
+    defense_stats_calculator = kba.DefenseStatsCalculator(
         person_state=result.person_state,
         guard_detections=result.guard_detections
     )
@@ -279,7 +279,7 @@ if st.button("Analyse"):
     # fallback, which shows as a frozen still frame.
     annotated_video_path = video_path.parent / f"annotated_{video_path.stem}.mp4"
 
-    sa.render_annotated_video(
+    kba.render_annotated_video(
         result=result,
         video_path=video_path,
         output_path=annotated_video_path,
@@ -547,7 +547,7 @@ if "result" in st.session_state:
         edge1 = (points[0], points[1])
         edge2 = (points[2], points[3])
 
-        footwork_analyser = sa.FootworkAnalyser(
+        footwork_analyser = kba.FootworkAnalyser(
             st.session_state["result"].person_state,
             principal_point=(frame.shape[1] / 2, frame.shape[0] / 2),
         )
@@ -629,7 +629,7 @@ if "footwork_analyser" in st.session_state:
             # so a partial render is never what gets played.
             tmp_path = video_path.parent / f"footwork_{uuid4().hex}.mp4"
 
-            sa.render_annotated_video(
+            kba.render_annotated_video(
                 result=st.session_state["result"],
                 video_path=video_path,
                 output_path=tmp_path,
