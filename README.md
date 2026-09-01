@@ -1,4 +1,4 @@
-# Kickboxing analysis tool
+# Kickboxing Analysis
 
 ![Python](https://img.shields.io/badge/python-3.12+-blue.svg)
 ![YOLO](https://img.shields.io/badge/pose-YOLO26-00FFFF.svg)
@@ -7,213 +7,217 @@
 ![Streamlit](https://img.shields.io/badge/Streamlit-FF4B4B.svg?logo=streamlit&logoColor=white)
 ![Docker](https://img.shields.io/badge/Docker-2496ED.svg?logo=docker&logoColor=white)
 ![License](https://img.shields.io/badge/license-Apache%202.0-green.svg)
-![Tests](https://img.shields.io/badge/tests-pytest-0A9EDC.svg?logo=pytest&logoColor=white)
-![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)
 
-A tool to analyse your shadowboxing. Point it at a video of someone **shadowboxing**, and it breaks down their
-striking, defence and footwork. It tracks the fighter's pose, picks out the
-strikes they throw, flags when the guard drops, maps where they move, and hands
-back stats, a heatmap and an annotated video. It's built for solo work, so it
-assumes one fighter in frame with no opponent, bag or pads.
+A Python computer-vision prototype for analysing **single-fighter shadowboxing footage**.
+
+The app uses pose tracking and rule-based motion analysis to identify strike events, flag periods where both hands are below shoulder level, and project ankle movement onto a selected floor area. It produces annotated video, session-level strike statistics, guard statistics, and a footwork heatmap.
+
+> This is a heuristic prototype, not a validated coaching or biomechanical measurement tool. Results depend on pose-tracking quality, camera position, calibration, and the fighter remaining visible.
 
 
-Most people will just use the Streamlit app (`app.py`). The analysis code lives
-in `src/kickboxing_analysis` if you'd rather call it from Python.
+## What it does
 
-## Features
+- Tracks people in video using YOLO pose estimation and ByteTrack.
+- Selects the longest-lived track as the fighter.
+- Applies confidence filtering and a constant-velocity Kalman filter to pose keypoints.
+- Detects left/right straights, hooks, uppercuts, and kicks using motion and geometric rules.
+- Flags frames where both wrists fall below a torso-scaled shoulder threshold.
+- Produces strike counts, rates, speeds, combinations, pacing, and left/right or lead/rear balance.
+- Lets the user mark four floor corners to create a footwork heatmap and movement statistics.
+- Produces an annotated video with pose, tracking, strike, guard, and distance overlays.
+- Caches tracked pose data in compressed `.npz` files to avoid rerunning pose inference for the same cached input.
 
-- Detects straights, hooks, uppercuts and kicks on both sides. When two fire at
-  once a straight beats a hook, and arm-swings near a kick get suppressed so they
-  don't count as punches.
-- Striking stats: counts, rates, peak and average speed in m/s, combos with
-  their average length and your most-thrown combinations, a lead/rear and
-  left/right hand balance, a punch/kick split, work-rate numbers (busiest
-  window, mean gap, longest rest, time to first strike), a per-strike speed
-  timeline, a pacing histogram, a rhythm score, and a fatigue read on how much
-  strike speed faded across the session.
-- Guard-drop detection for when both hands fall below the shoulders, with the
-  time of each drop and the total guard-up time.
-- Footwork: the ankles get projected onto the floor for a movement heatmap, plus
-  floor coverage, stance width and distance travelled. Results are in metres if
-  you give the floor edge lengths, otherwise a unit square.
-- An annotated video with the skeleton, tracking box, strike, combo and guard
-  labels and a running distance counter. Written as H.264 if ffmpeg is around.
-- Tracking gets cached to an `.npz` file, so re-running the same clip skips the
-  model pass.
+## Intended input
+
+The tool is designed for:
+
+- One person in frame.
+- Shadowboxing rather than sparring, pads, bags, or competition footage.
+- Stable camera position.
+- A full or near-full body view, including both ankles.
+- Visible floor boundaries if footwork analysis is required.
+
+It is not designed to identify a particular fighter in multi-person footage or to analyse live bouts reliably.
 
 ## How it works
 
 ```mermaid
 flowchart LR
-    A[Video] --> B[PoseTracker<br/>YOLO + ByteTrack]
-    B --> C[Kalman filter<br/>+ confidence gating]
+    A[Video] --> B[YOLO pose + ByteTrack]
+    B --> C[Confidence filtering + Kalman smoothing]
     C --> D[PersonState]
-    D --> E[Strike detection<br/>+ arbitration]
+    D --> E[Rule-based strike detection]
     D --> F[Guard-drop detection]
-    D --> G[Footwork projection]
-    E & F & G --> H[Stats + heatmap]
+    D --> G[Floor projection]
+    E & F & G --> H[Session statistics]
     E & F & G --> I[Annotated video]
 ```
 
-1. `PoseTracker` runs YOLO pose with ByteTrack over the video. Whichever track
-   shows up in the most frames is taken to be the fighter.
-2. Drop the low-confidence keypoints, then smooth each one with a
-   constant-velocity Kalman filter. Short gaps in the track are bridged by
-   holding the last valid position.
-3. Each detector finds peaks in a joint's speed and checks them against a few
-   geometric conditions (arm extension and bend, shoulder rotation, shin angle,
-   foot height). `StrikeAnalyser` sorts out any overlaps afterwards.
-4. The stats calculators turn the detection masks into numbers, the footwork
-   pipeline builds the heatmap, and it all ends up in the app and on the
-   annotated video.
+1. YOLO pose tracking finds people and pose keypoints in each frame.
+2. The longest-lived track is selected for analysis.
+3. Low-confidence keypoints are removed and valid positions are smoothed.
+4. Strike detectors identify speed peaks and apply pose-geometry conditions:
+   - straights: wrist speed and arm extension
+   - hooks: wrist sweep and elbow angle
+   - uppercuts: upward wrist movement and compact arm geometry
+   - kicks: ankle speed, leg geometry, and foot height
+5. The application calculates session statistics and, when floor corners are supplied, projects ankle motion into a floor coordinate system.
 
-## Project structure
+## Outputs
 
-```
-app.py                    # Streamlit app (main entry point)
-src/
-├── download_clip.py      # Trims a YouTube clip with yt-dlp
-└── kickboxing_analysis/  # Analysis library (the installed package)
-    ├── pipeline.py       # analyse_video / render_annotated_video
-    ├── tracking.py       # PoseTracker, PersonState, Kalman filter
-    ├── features.py       # Joint speeds, angles, scale calibration
-    ├── strike_detectors.py / strike_analysis.py   # detection + arbitration
-    ├── striking_stats.py / defense_*.py           # stats
-    ├── footwork_*.py     # floor projection, heatmap, footwork stats
-    ├── annotator.py      # Draws the annotations onto the video
-    ├── config.py         # Config / StrikeConfig / DefenseConfig / FootworkConfig
-    └── cache.py, video.py, geometry.py, constants.py, inspector.py
-tests/                    # pytest suite
-models/                   # YOLO pose weights
-```
+| Output | Contents |
+| --- | --- |
+| Annotated video | Tracking box, skeleton, strike labels, guard labels, combo labels, and optional distance overlay. |
+| Strike statistics | Total strikes; counts and rates by side/type; average and maximum estimated speed; strike mix; lead/rear and left/right balance; combo count and length; pacing; rhythm; mean gap and longest rest. |
+| Guard statistics | Estimated guard-up time, guard-up percentage, and count/timing of periods where both hands are below the configured threshold. |
+| Footwork statistics | Floor coverage, estimated stance width, stance-width variation, estimated cumulative distance, and a movement heatmap. |
+| Pose cache | Compressed keypoints, boxes, confidence values, and metadata stored as `.npz`. |
 
 ## Installation
 
-Needs Python 3.12+ and [uv](https://docs.astral.sh/uv/):
+Requirements:
+
+- Python 3.12+
+- [uv](https://docs.astral.sh/uv/)
+- `ffmpeg` with `libx264` on `PATH` for browser-friendly H.264 annotated video
 
 ```bash
 uv sync
 ```
 
-That pulls in the `kickboxing_analysis` package and everything it needs
-(`ultralytics`, `opencv-python`, `numpy`, `scipy`, `pandas`, `matplotlib`,
-`seaborn`, `streamlit`).
-
-The app loads `yolo26s-pose.pt`, kept in `models/`; if it's missing ultralytics
-grabs a checkpoint on first use. To get a video the browser can actually play,
-you need ffmpeg with the `libx264` encoder on `PATH`. Without it the writer falls
-back to `mp4v`, which most browsers won't touch.
-
-## Usage
-
-Run the app with:
+Run the Streamlit app:
 
 ```bash
 uv run streamlit run app.py
 ```
 
-Upload a video, fill in the fighter's name and height (wingspan, weight and
-stance are optional for now), then hit Analyse. For footwork, click the four
-floor corners in the order left-near, left-far, right-near, right-far. Enter the
-real length of each side in metres if you want the results in metres instead of a
-unit square.
+The application will load `yolo26s-pose.pt`. If the model weights are not already available, Ultralytics may download them on first use.
 
-To call it from Python:
+## Using the app
+
+1. Upload an MP4, MOV, or AVI video.
+2. Enter the fighter's details, especially height.
+3. Select orthodox or southpaw stance.
+4. Run the analysis.
+5. For footwork, select the four floor corners in this order: `left-near`, `left-far`, `right-near`, `right-far`.
+6. Optionally enter floor dimensions to express footwork results in metres.
+7. Review the annotated video, session metrics, and footwork visualisation.
+
+## Python usage
 
 ```python
 from pathlib import Path
+
 import kickboxing_analysis as kba
 
-person = kba.Person(name="Fighter", height_m=1.83, wingspan_m=1.88,
-                    weight=66, stance="orthodox")
+person = kba.Person(
+    name="Fighter",
+    height_m=1.83,
+    wingspan_m=None,
+    weight=None,
+    stance="orthodox",
+)
 
 result = kba.analyse_video(
     video_path=Path("clip.mp4"),
     person=person,
-    cache_path=Path("outputs/clip.npz"),
+    cache_path=Path("cache/clip.npz"),
     model="yolo26s-pose.pt",
     config=kba.Config(),
     strike_config=kba.StrikeConfig(),
 )
 
-for r in result.strike_records:          # the strikes thrown, in order
-    print(f"{r['time_s']:.2f}s  {r['side']} {r['strike_type']}")
-
 stats = kba.StrikingStatsCalculator(
-    result.person_state, result.strike_detections, kba.StrikeConfig()
+    result.person_state,
+    result.strike_detections,
+    kba.StrikeConfig(),
 ).calculate_striking_stats()
+
+print(stats.total_strikes)
+print(stats.strike_mix)
 ```
 
-`python -m kickboxing_analysis.main` runs the same pipeline as a plain script,
-just with hard-coded paths and floor corners. Edit its `__main__` block to point
-it at your own clip.
+## Floor projection
 
-## Configuration
+Footwork analysis maps the ankles from image coordinates onto a user-selected floor quadrilateral.
 
-All the thresholds live in four frozen dataclasses in
-[config.py](src/kickboxing_analysis/config.py). The defaults are tuned for normal
-shadowboxing footage; pass your own instances into `analyse_video` to override
-them.
+![Camera angle versus floor-width recovery](docs/floor_angles.svg)
 
-- `Config` covers the pose tracking: the keypoint confidence cutoff and the
-  smoothing window.
-- `StrikeConfig` covers the detector thresholds: the speed bands in m/s and the
-  geometric angles per strike, the windows for suppressing punches around a kick,
-  the gap needed between two peaks, and `max_hold`, the longest tracking gap
-  that gets bridged.
-- `DefenseConfig` is just how far below the shoulder a wrist has to fall, in
-  torso lengths, before it counts as a dropped guard.
-- `FootworkConfig` covers the kick and check filter window, the step threshold
-  that ignores jitter, and the ankle-height and knee-angle cutoffs for deciding
-  when a foot is off the ground.
+Metric estimates are more credible when:
 
-## Some detail
+- The floor is approximately rectangular.
+- The camera remains fixed.
+- The floor edges are visible.
+- At least two side lengths are known.
+- Perspective is present; a straight-on camera angle can make width estimation ambiguous.
 
-Scale comes from the body, not from any camera calibration. Each frame the torso
-length (centre of the shoulders to centre of the hips) is measured in pixels and
-converted to metres with `torso ≈ 0.3 × height`. That gives a pixels-to-metres
-ratio per frame, so a threshold set in m/s gets rescaled to pixels frame by
-frame.
-
-Every detector works the same way. It finds peaks in a joint's speed with
-`scipy.signal.find_peaks`, drops anything above a max speed as a glitch, and
-checks what's left against geometry. A straight wants a fast wrist extending with
-the elbow near straight; a hook wants a fast angular sweep towards the opposite
-shoulder with the elbow bent; an uppercut wants fast upward travel from a compact
-guard; a kick wants a fast ankle, a wide angle between the shins, and the foot
-raised.
-
-For footwork, two traced floor edges give you four corners and a homography onto
-a unit square, or a metric rectangle once the edge lengths are known. The width
-is recovered from the depth using the vanishing points and the image centre.
-Airborne frames get dropped before the heatmap and stats go together.
-
-## Outputs
-
-| Output | What's in it |
-| --- | --- |
-| Annotated video | Skeleton, box, strike, combo and guard labels, distance counter. |
-| Cache (`.npz`) | Keypoints, boxes and metadata, reused on the next run. |
-| `StrikingStats` | Counts, rates, max and average speeds, combos and top sequences, hand balance, punch/kick mix, work rate, fatigue, rhythm, pacing, speed timelines. |
-| `GuardStats` | Guard-up time and percentage, drop count, per-drop timings. |
-| `FootworkStats` + figure | Floor coverage, stance width and its spread, distance, heatmap. |
+If floor dimensions are unavailable, the application uses a unit-square projection. Those results should be interpreted as relative position and coverage, not metres.
 
 ## Limitations
 
-- Only works when there is one person in the video frame. Having another person affect the model's results
-- It's 2D and the detection is heuristic. The scale assumes an upright torso
-  , the camera is at shoulder height, and the thresholds are fixed
-- The floor calibration assumes the camera stays still through the clip.
+- The detector uses 2D pose data and fixed heuristic thresholds.
+- It does not estimate 3D joint motion, force, impact, or true strike velocity.
+- Estimated speeds rely on torso-based scale assumptions and therefore are not validated biomechanical measurements.
+- Occlusion, motion blur, camera movement, clothing, framing, and pose-estimation errors can change results.
+- The tool is intended for one fighter in frame; multi-person scenes can cause track selection or attribution errors.
+- Guard detection currently defines a drop as **both** wrists being sufficiently below their corresponding shoulders.
+- Footwork metrics depend on manually selected floor corners and camera geometry.
+- No labelled benchmark dataset, precision/recall metrics, or external validation study is currently included.
+
+## Data, privacy, and content rights
+
+Users should only upload footage they are authorised to process and share.
+
+The application creates temporary video files and may persist pose-tracking caches locally. Avoid uploading footage containing people who have not consented to analysis, or footage containing sensitive personal information.
+
+No third-party video assets are included in the Git repository.
+
+## Project structure
+
+```text
+app.py                              # Streamlit application
+src/
+├── download_clip.py                # Optional command-line clip downloader
+└── kickboxing_analysis/
+    ├── pipeline.py                 # Video analysis and annotation workflow
+    ├── tracking.py                 # YOLO tracking, PersonState, Kalman smoothing
+    ├── features.py                 # Speeds, angles, calibration helpers
+    ├── strike_detectors.py         # Straight, hook, uppercut, and kick rules
+    ├── strike_analysis.py          # Detection arbitration
+    ├── striking_stats.py           # Strike statistics
+    ├── defense_*.py                # Guard-drop logic and statistics
+    ├── footwork_*.py               # Projection, heatmap, and footwork statistics
+    ├── annotator.py                # Video overlay rendering
+    ├── cache.py                    # Pose-cache serialisation
+    └── config.py                   # Analysis thresholds and configuration
+tests/                              # Unit tests
+docs/                               # README assets
+Dockerfile                          # Container build
+```
 
 ## Development
 
 ```bash
-uv run pytest          # tests
-uv run ruff check .    # lint
-uv run ruff format .   # format
+uv run pytest
+uv run ruff check .
+uv run ruff format .
 ```
 
-## License
+## Evaluation status
 
-Licensed under the Apache License, Version 2.0. See [LICENSE](LICENSE) for the
-full text.
+The repository includes unit tests for selected motion features and strike-detection scenarios using synthetic pose tracks.
+
+It does not yet include:
+
+- labelled video ground truth;
+- precision, recall, F1, or confusion matrices;
+- per-strike-class error analysis;
+- end-to-end tests against real videos;
+- a comparison with manual annotation;
+- validation of speed, distance, or floor-calibration estimates.
+
+Any future performance claims should include the dataset, annotation protocol, evaluation split, metric definitions, and examples of failure cases.
+
+## Licence
+
+Licensed under the Apache License, Version 2.0. See [LICENSE](LICENSE).
