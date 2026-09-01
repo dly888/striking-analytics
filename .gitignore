@@ -26,6 +26,9 @@ outputs/
 cache/*
 !cache/.gitkeep
 
+# Machine-specific Ultralytics settings
+Ultralytics/
+
 # Editors / tooling
 .idea/
 .claude/

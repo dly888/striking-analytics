@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style>
+      * { box-sizing: border-box; }
+      body { margin: 0; background: #121513; color: #e7e4dd; font-family: "Segoe UI", Arial, Helvetica, sans-serif; overflow: hidden; }
+      #container { position: relative; width: 100%; }
+      canvas { display: block; width: 100%; height: auto; cursor: crosshair; touch-action: none; }
+      #hint { color: #9ca49b; font-size: 0.8rem; margin: 0.35rem 0 0; }
+      #hint:empty { display: none; }
+    </style>
+  </head>
+  <body>
+    <div id="container">
+      <canvas id="selector"></canvas>
+      <p id="hint">Click to add a corner. Drag a numbered marker to reposition it.</p>
+    </div>
+    <script>
+      const canvas = document.getElementById("selector");
+      const context = canvas.getContext("2d");
+      const hint = document.getElementById("hint");
+      const colours = ["#ef4444", "#f59e0b", "#3b82f6", "#a855f7"];
+      const labels = ["Left near", "Left far", "Right near", "Right far"];
+      let image = new Image();
+      let imageSource = "";
+      let points = [];
+      let dragging = null;
+      // Streamlit reruns the Python script after every emitted value. During
+      // that round-trip it can send the previous value back once, so keep the
+      // just-edited points on the canvas until the matching value returns.
+      let pendingPoints = null;
+
+      function send(type, data) {
+        window.parent.postMessage(
+          Object.assign({ isStreamlitMessage: true, type }, data),
+          "*"
+        );
+      }
+
+      function setHeight() {
+        const height = Math.ceil(
+          canvas.getBoundingClientRect().height + hint.getBoundingClientRect().height + 8
+        );
+        send("streamlit:setFrameHeight", { height });
+      }
+
+      function draw() {
+        if (!canvas.width || !canvas.height) return;
+        context.clearRect(0, 0, canvas.width, canvas.height);
+        if (image.complete && image.naturalWidth) {
+          context.drawImage(image, 0, 0, canvas.width, canvas.height);
+        }
+
+        if (points.length === 4) {
+          const order = [0, 2, 3, 1, 0];
+          context.beginPath();
+          context.moveTo(points[order[0]][0], points[order[0]][1]);
+          for (const index of order.slice(1)) context.lineTo(points[index][0], points[index][1]);
+          context.closePath();
+          context.fillStyle = "rgba(99, 181, 255, 0.18)";
+          context.fill();
+          context.strokeStyle = "#63b5ff";
+          context.lineWidth = 3;
+          context.stroke();
+          hint.textContent = "";
+        } else {
+          hint.textContent = `Click to add corner ${points.length + 1} of 4. Drag a marker to reposition it.`;
+        }
+
+        points.forEach((point, index) => {
+          context.beginPath();
+          context.arc(point[0], point[1], dragging === index ? 14 : 11, 0, Math.PI * 2);
+          context.fillStyle = colours[index];
+          context.fill();
+          context.lineWidth = 2;
+          context.strokeStyle = dragging === index ? "#63b5ff" : "white";
+          context.stroke();
+          context.fillStyle = "white";
+          context.font = "600 12px Segoe UI, Arial, sans-serif";
+          context.textAlign = "center";
+          context.textBaseline = "middle";
+          context.fillText(String(index + 1), point[0], point[1] + 0.5);
+          context.fillStyle = "#111827";
+          context.font = "12px Segoe UI, Arial, sans-serif";
+          context.textAlign = "left";
+          context.fillText(labels[index], point[0] + 16, point[1]);
+        });
+        setHeight();
+      }
+
+      function canvasPoint(event) {
+        const rect = canvas.getBoundingClientRect();
+        return [
+          Math.max(0, Math.min(canvas.width, (event.clientX - rect.left) * canvas.width / rect.width)),
+          Math.max(0, Math.min(canvas.height, (event.clientY - rect.top) * canvas.height / rect.height)),
+        ];
+      }
+
+      function closestPoint(point) {
+        const radius = 18;
+        let selected = null;
+        points.forEach((candidate, index) => {
+          if (Math.hypot(candidate[0] - point[0], candidate[1] - point[1]) <= radius) {
+            selected = index;
+          }
+        });
+        return selected;
+      }
+
+      function clonePoints(value) {
+        return value.map((point) => [point[0], point[1]]);
+      }
+
+      function samePoints(left, right) {
+        return left.length === right.length && left.every(
+          (point, index) => Math.abs(point[0] - right[index][0]) < 0.25
+            && Math.abs(point[1] - right[index][1]) < 0.25
+        );
+      }
+
+      function emitPoints() {
+        pendingPoints = clonePoints(points);
+        send("streamlit:setComponentValue", { value: pendingPoints });
+      }
+
+      canvas.addEventListener("pointerdown", (event) => {
+        const point = canvasPoint(event);
+        const selected = closestPoint(point);
+        if (selected !== null) {
+          dragging = selected;
+          canvas.setPointerCapture(event.pointerId);
+        } else if (points.length < 4) {
+          points.push(point);
+          draw();
+          // Let the browser paint the new marker before Streamlit begins its
+          // rerun, so the first click has immediate visual feedback.
+          requestAnimationFrame(emitPoints);
+        }
+      });
+
+      canvas.addEventListener("pointermove", (event) => {
+        if (dragging === null) return;
+        points[dragging] = canvasPoint(event);
+        draw();
+      });
+
+      function endDrag(event) {
+        if (dragging === null) return;
+        points[dragging] = canvasPoint(event);
+        dragging = null;
+        draw();
+        emitPoints();
+      }
+
+      canvas.addEventListener("pointerup", endDrag);
+      canvas.addEventListener("pointercancel", endDrag);
+      window.addEventListener("resize", setHeight);
+
+      window.addEventListener("message", (event) => {
+        if (event.data.type !== "streamlit:render") return;
+        const args = event.data.args;
+        const receivedPoints = Array.isArray(args.points)
+          ? args.points.slice(0, 4).map((point) => [Number(point[0]), Number(point[1])])
+          : [];
+
+        if (pendingPoints === null || samePoints(receivedPoints, pendingPoints)) {
+          points = receivedPoints;
+          pendingPoints = null;
+        }
+        canvas.width = Number(args.image_width) || 1;
+        canvas.height = Number(args.image_height) || 1;
+        if (args.image !== imageSource) {
+          imageSource = args.image;
+          image = new Image();
+          image.onload = draw;
+          image.src = imageSource;
+        }
+        draw();
+      });
+
+      send("streamlit:componentReady", { apiVersion: 1 });
+    </script>
+  </body>
+</html>

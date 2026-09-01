@@ -1,13 +1,18 @@
 import matplotlib.pyplot as plt
 import numpy as np
 import seaborn as sns
+from matplotlib.colors import LinearSegmentedColormap
 from matplotlib.lines import Line2D
 from scipy.ndimage import gaussian_filter
 
 from .footwork_projection import FootworkProjector
 
-LEFT_FOOT_COLOUR = "#4cc9f0"
-RIGHT_FOOT_COLOUR = "#f72585"
+LEFT_FOOT_COLOUR = "#63b5ff"
+RIGHT_FOOT_COLOUR = "#d7ecff"
+FLOOR_HEATMAP_COLOUR_MAP = LinearSegmentedColormap.from_list(
+    "strike_room_blue",
+    ["#17231f", "#194a70", "#2d82c5", "#9ed5ff"],
+)
 
 
 class FootworkPlotter:
@@ -127,7 +132,19 @@ class FootworkPlotter:
         density = gaussian_filter(counts, sigma=smoothing)
         density = density / density.max() if density.max() else density
 
-        sns.set_theme(style="white")
+        sns.set_theme(
+            style="dark",
+            rc={
+                "axes.facecolor": "#171a18",
+                "axes.edgecolor": "#566056",
+                "axes.labelcolor": "#e7e4dd",
+                "font.family": "Arial",
+                "figure.facecolor": "#121513",
+                "text.color": "#e7e4dd",
+                "xtick.color": "#c7cec7",
+                "ytick.color": "#c7cec7",
+            },
+        )
 
         fig, ax = plt.subplots(figsize=(9, 8))
 
@@ -138,7 +155,7 @@ class FootworkPlotter:
             density.T,
             origin="lower",
             extent=(0, width, 0, depth),
-            cmap="inferno",
+            cmap=FLOOR_HEATMAP_COLOUR_MAP,
             interpolation="bilinear",
         )
 
