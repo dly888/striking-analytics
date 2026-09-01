@@ -184,7 +184,6 @@ def analyse_session(video, person: kba.Person) -> None:
 
 def render_setup() -> None:
     st.markdown("<p class='panel-title'>New session</p>", unsafe_allow_html=True)
-    st.markdown("<p class='panel-copy'>Upload one shadowboxing round to begin analysis.</p>", unsafe_allow_html=True)
     with st.form("session_setup"):
         video = st.file_uploader("Training clip", type=["mp4", "mov", "avi"], help="One fighter in frame; shadowboxing footage works best.")
         name = st.text_input("Fighter name")
@@ -241,19 +240,18 @@ def render_calibration(compact: bool = False) -> kba.FootworkAnalyser | None:
 
     analyser = kba.FootworkAnalyser(st.session_state["result"].person_state, principal_point=(frame.shape[1] / 2, frame.shape[0] / 2))
     analyser.select_floor(edge1=(points[0], points[1]), edge2=(points[2], points[3]))
-    with st.expander("Scale the floor projection (optional)"):
-        st.caption("Enter both side lengths for results in metres. Leave them at zero to use a unit-square projection.")
-        left_col, right_col, width_col = st.columns(3)
-        with left_col:
-            left_length = st.number_input("Left side (m)", min_value=0.0, step=0.1, key="floor_length1")
-        with right_col:
-            right_length = st.number_input("Right side (m)", min_value=0.0, step=0.1, key="floor_length2")
-        with width_col:
-            width_m = st.number_input("Front edge / width (m)", min_value=0.0, step=0.1, key="floor_width")
-        if left_length > 0 and right_length > 0:
-            analyser.select_floor_edge_lengths_m(left_length, right_length)
-        if width_m > 0:
-            analyser.select_floor_width_m(width_m)
+    st.caption("Floor dimensions (optional). Enter both side lengths for results in metres; leave them at zero for a unit-square projection.")
+    left_col, right_col, width_col = st.columns(3)
+    with left_col:
+        left_length = st.number_input("Left side (m)", min_value=0.0, step=0.1, key="floor_length1")
+    with right_col:
+        right_length = st.number_input("Right side (m)", min_value=0.0, step=0.1, key="floor_length2")
+    with width_col:
+        width_m = st.number_input("Front edge / width (m)", min_value=0.0, step=0.1, key="floor_width")
+    if left_length > 0 and right_length > 0:
+        analyser.select_floor_edge_lengths_m(left_length, right_length)
+    if width_m > 0:
+        analyser.select_floor_width_m(width_m)
     st.session_state["footwork_analyser"] = analyser
     if not compact:
         st.success("Floor calibrated. Open Review from the workspace panel.")
@@ -345,10 +343,12 @@ def create_footwork_output(analyser: kba.FootworkAnalyser) -> None:
 def render_footwork(analyser: kba.FootworkAnalyser) -> None:
     output = st.session_state.get("footwork_output")
     if output is None:
-        st.caption("Generate the existing footwork video, 40 × 40-bin heatmap, and movement statistics.")
         if st.button("Render footwork visualisations", type="primary"):
             create_footwork_output(analyser)
             output = st.session_state["footwork_output"]
+    elif st.button("Update footwork analysis", type="secondary"):
+        create_footwork_output(analyser)
+        output = st.session_state["footwork_output"]
     if output is None:
         return
     stats = output["stats"]
@@ -368,10 +368,6 @@ def render_footwork(analyser: kba.FootworkAnalyser) -> None:
 def render_review(analyser: kba.FootworkAnalyser) -> None:
     stats = st.session_state["stats"]
     guard_stats = st.session_state["guard_stats"]
-    output = st.session_state.get("footwork_output")
-    distance = None
-    if output is not None and output["stats"].distance_travelled_cumsum.size:
-        distance = output["stats"].distance_travelled_cumsum[-1]
     video_col, metrics_col = st.columns((1.65, .8))
     with video_col:
         video_path = st.session_state["annotated_video_path"]
@@ -383,9 +379,6 @@ def render_review(analyser: kba.FootworkAnalyser) -> None:
         st.metric("Strikes", stats.total_strikes)
         st.metric("Combos", stats.combo_count)
         st.metric("Guard up", f"{guard_stats.guard_up_time_percentage:.0%}")
-        st.metric("Distance", "—" if distance is None else f"{distance:.2f}")
-        if distance is None:
-            st.caption("Distance appears after footwork visualisations are rendered.")
     striking_tab, guard_tab, footwork_tab = st.tabs(("Striking", "Guard", "Footwork"))
     with striking_tab:
         render_striking(stats)
