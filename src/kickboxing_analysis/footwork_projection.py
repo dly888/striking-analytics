@@ -10,7 +10,8 @@ class FootworkProjector:
         self.person_state = person_state
 
         self.principal_point = (
-            None if principal_point is None
+            None
+            if principal_point is None
             else np.asarray(principal_point, dtype=np.float64)
         )
         self.mapped_right_ankle_keypoints = None
@@ -138,13 +139,9 @@ class FootworkProjector:
         near1, near2, far2, far1 = self.floor_corners.astype(np.float64)
 
         # Take the averages of the lengths
-        width_px = (
-            np.linalg.norm(near2 - near1) + np.linalg.norm(far2 - far1)
-        ) / 2
+        width_px = (np.linalg.norm(near2 - near1) + np.linalg.norm(far2 - far1)) / 2
 
-        depth_px = (
-            np.linalg.norm(far1 - near1) + np.linalg.norm(far2 - near2)
-        ) / 2
+        depth_px = (np.linalg.norm(far1 - near1) + np.linalg.norm(far2 - near2)) / 2
 
         affine_width_m = width_px / depth_px * depth_m
 
@@ -155,8 +152,7 @@ class FootworkProjector:
         # homogeneous coordinates.
         cx, cy = self.principal_point
         h1, h2, h3, h4 = (
-            np.array([x - cx, y - cy, 1.0])
-            for x, y in (near1, near2, far2, far1)
+            np.array([x - cx, y - cy, 1.0]) for x, y in (near1, near2, far2, far1)
         )
 
         # Vanishing points of the width edges and the depth edges
@@ -193,12 +189,8 @@ class FootworkProjector:
 
         p1, p2, p3, p4 = (back_project(h) for h in (h1, h2, h3, h4))
 
-        width_world = (
-            np.linalg.norm(p2 - p1) + np.linalg.norm(p3 - p4)
-        ) / 2
-        depth_world = (
-            np.linalg.norm(p4 - p1) + np.linalg.norm(p3 - p2)
-        ) / 2
+        width_world = (np.linalg.norm(p2 - p1) + np.linalg.norm(p3 - p4)) / 2
+        depth_world = (np.linalg.norm(p4 - p1) + np.linalg.norm(p3 - p2)) / 2
 
         return width_world / depth_world * depth_m
 

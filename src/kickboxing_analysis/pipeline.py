@@ -11,8 +11,8 @@ from .cache import TrackCache
 from .config import Config, StrikeConfig
 from .defense_analysis import DefenseAnalyser
 from .defense_detections import GuardDetections
-from .strike_detections import StrikeDetections
 from .strike_analysis import StrikeAnalyser
+from .strike_detections import StrikeDetections
 from .tracking import Person, PersonState, PoseTracker
 from .video import validate_video
 
@@ -62,7 +62,6 @@ def analyse_video(
     if cache_path.exists():
         tracker = TrackCache.load_pose_tracker(path=cache_path)
     else:
-
         is_valid, video_limit_error = validate_video(video_path=video_path)
 
         if is_valid:
@@ -71,8 +70,6 @@ def analyse_video(
             TrackCache.save_pose_tracker(pose_tracker=tracker, new_path=cache_path)
         else:
             raise ValueError(video_limit_error.value)
-
-
 
     track_ids = tracker.get_top_n_ids(n=1)
 
@@ -94,7 +91,9 @@ def analyse_video(
         person_state=person_state,
         strike_detections=strike_detections,
         guard_detections=guard_detections,
-        strike_records=strike_detections.to_records(person_state.fps, strike_config.min_punch_frames),
+        strike_records=strike_detections.to_records(
+            person_state.fps, strike_config.min_punch_frames
+        ),
     )
 
 

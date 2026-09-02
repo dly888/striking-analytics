@@ -164,7 +164,6 @@ class FootworkPlotter:
         colour_bar = fig.colorbar(image, ax=ax, shrink=0.82, pad=0.03)
         colour_bar.set_label("Time spent (relative)", fontsize=10)
 
-
         if self.projector.true_scale_homography is None:
             # Unit square default
             ax.set_xlabel("Across the front", fontsize=10)

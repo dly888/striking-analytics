@@ -26,7 +26,9 @@ class FootworkAnalyser:
     ):
         self.person_state = person_state
         self.footwork_config = FootworkConfig()
-        self.projector = FootworkProjector(person_state, principal_point=principal_point)
+        self.projector = FootworkProjector(
+            person_state, principal_point=principal_point
+        )
 
         self.left_ankle_keypoints = None
         self.right_ankle_keypoints = None
@@ -78,21 +80,23 @@ class FootworkAnalyser:
         left_raise = get_ankle_above_hip(self.person_state, "left")
         right_raise = get_ankle_above_hip(self.person_state, "right")
 
-        left_knee_angle = get_joint_angle(self.person_state,
-                                          "left_ankle",
-                                          "left_knee",
-                                          "left_hip")
+        left_knee_angle = get_joint_angle(
+            self.person_state, "left_ankle", "left_knee", "left_hip"
+        )
 
-        right_knee_angle = get_joint_angle(self.person_state,
-                                          "right_ankle",
-                                          "right_knee",
-                                          "right_hip")
+        right_knee_angle = get_joint_angle(
+            self.person_state, "right_ankle", "right_knee", "right_hip"
+        )
 
         height_threshold = self.footwork_config.kick_ankle_above_hip_m
         check_angle_threshold = self.footwork_config.check_angle
 
-        left_mask = (left_raise > height_threshold) | (left_knee_angle < check_angle_threshold)
-        right_mask = (right_raise > height_threshold) | (right_knee_angle < check_angle_threshold)
+        left_mask = (left_raise > height_threshold) | (
+            left_knee_angle < check_angle_threshold
+        )
+        right_mask = (right_raise > height_threshold) | (
+            right_knee_angle < check_angle_threshold
+        )
 
         return left_mask, right_mask
 

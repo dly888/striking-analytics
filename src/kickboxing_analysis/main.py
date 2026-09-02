@@ -55,7 +55,9 @@ def main(
         f"{int(person_state.detected.sum())}/{person_state.frames_processed} frames"
     )
 
-    for strike, count in result.strike_detections.counts(strike_config.min_punch_frames).items():
+    for strike, count in result.strike_detections.counts(
+        strike_config.min_punch_frames
+    ).items():
         print(f"  {strike.label}: {count}")
 
     print(f"\n{len(result.strike_records)} strikes thrown:")

@@ -3,7 +3,6 @@ from __future__ import annotations
 import numpy as np
 
 from .config import StrikeConfig
-from .strike_detections import Strike
 from .features import (
     get_ankle_above_hip,
     get_ankle_raise,
@@ -15,12 +14,13 @@ from .features import (
     get_pixel_to_meter_ratio,
     get_speed_threshold,
 )
+from .strike_detections import Strike
 from .tracking import PersonState
-
 
 # ============================================================================================================
 # Detection helpers
 # ============================================================================================================
+
 
 def merge_nearby_detections(detection_mask, min_separation) -> np.ndarray:
     merged = np.full(len(detection_mask), False)
@@ -36,8 +36,9 @@ def merge_nearby_detections(detection_mask, min_separation) -> np.ndarray:
 # Punch detection
 # ============================================================================================================
 
+
 def detect_straight(
-        state: PersonState, strike: Strike, strike_config: StrikeConfig
+    state: PersonState, strike: Strike, strike_config: StrikeConfig
 ) -> np.ndarray:
     """
     Detects when a straight punch occurs.
@@ -71,13 +72,13 @@ def detect_straight(
     )
 
     arm_lifted = (
-            get_joint_angle(state, f"{side}_hip", f"{side}_shoulder", f"{side}_elbow")
-            > strike_config.arm_body_angle_threshold
+        get_joint_angle(state, f"{side}_hip", f"{side}_shoulder", f"{side}_elbow")
+        > strike_config.arm_body_angle_threshold
     )
 
     arm_extended = (
-            get_joint_angle(state, f"{side}_shoulder", f"{side}_elbow", f"{side}_wrist")
-            > strike_config.straight_angle_threshold
+        get_joint_angle(state, f"{side}_shoulder", f"{side}_elbow", f"{side}_wrist")
+        > strike_config.straight_angle_threshold
     )
 
     for peak in peaks:
@@ -89,8 +90,8 @@ def detect_straight(
         # Check if the extension peak is before or after the speed peak
         # If it is after the speed peak its extending, otherwise it is retracting
         # Prevents double detection due to strike retraction
-        currently_extending = np.nanmax(reach[peak: window.stop]) > np.nanmax(
-            reach[window.start: peak]
+        currently_extending = np.nanmax(reach[peak : window.stop]) > np.nanmax(
+            reach[window.start : peak]
         )
 
         if currently_extending & np.any(arm_lifted[window] & arm_extended[window]):
@@ -102,9 +103,9 @@ def detect_straight(
 
 
 def detect_hook(
-        state: PersonState,
-        strike: Strike,
-        strike_config: StrikeConfig,
+    state: PersonState,
+    strike: Strike,
+    strike_config: StrikeConfig,
 ) -> np.ndarray:
     """
     Detects whether a hook occurs.
@@ -141,21 +142,21 @@ def detect_hook(
     )
 
     arm_lifted = (
-            get_joint_angle(state, f"{side}_hip", f"{side}_shoulder", f"{side}_elbow")
-            > strike_config.arm_body_angle_threshold
+        get_joint_angle(state, f"{side}_hip", f"{side}_shoulder", f"{side}_elbow")
+        > strike_config.arm_body_angle_threshold
     )
 
     arm_bent = (
-            get_joint_angle(state, f"{side}_shoulder", f"{side}_elbow", f"{side}_wrist")
-            < strike_config.hook_elbow_angle_threshold  # Threshold is a maximum
+        get_joint_angle(state, f"{side}_shoulder", f"{side}_elbow", f"{side}_wrist")
+        < strike_config.hook_elbow_angle_threshold  # Threshold is a maximum
     )
 
     # Checks if the wrist is inward enough
     shoulder_rotated = (
-            get_joint_angle(
-                state, f"{opposite}_shoulder", f"{side}_shoulder", f"{side}_wrist"
-            )
-            < strike_config.hook_wrist_shoulder_line_angle_threshold  # Threshold is a maximum
+        get_joint_angle(
+            state, f"{opposite}_shoulder", f"{side}_shoulder", f"{side}_wrist"
+        )
+        < strike_config.hook_wrist_shoulder_line_angle_threshold  # Threshold is a maximum
     )
 
     detections = np.full(len(wrist_speed), fill_value=False)
@@ -167,10 +168,10 @@ def detect_hook(
         )
 
         if np.any(
-                arm_lifted[window]
-                & arm_bent[window]
-                & shoulder_rotated[window]
-                & (wrist_speed[window] > wrist_speed_threshold[window])
+            arm_lifted[window]
+            & arm_bent[window]
+            & shoulder_rotated[window]
+            & (wrist_speed[window] > wrist_speed_threshold[window])
         ):
             detections[peak] = True
 
@@ -180,7 +181,7 @@ def detect_hook(
 
 
 def detect_uppercut(
-        state: PersonState, strike: Strike, strike_config: StrikeConfig
+    state: PersonState, strike: Strike, strike_config: StrikeConfig
 ) -> np.ndarray:
     """
     Detects whether an uppercut occurs.
@@ -217,21 +218,21 @@ def detect_uppercut(
     )
 
     arm_tucked = (
-            get_joint_angle(state, f"{side}_hip", f"{side}_shoulder", f"{side}_elbow")
-            < strike_config.uppercut_arm_body_angle_threshold  # Threshold is a maximum
+        get_joint_angle(state, f"{side}_hip", f"{side}_shoulder", f"{side}_elbow")
+        < strike_config.uppercut_arm_body_angle_threshold  # Threshold is a maximum
     )
 
     arm_bent = (
-            get_joint_angle(state, f"{side}_shoulder", f"{side}_elbow", f"{side}_wrist")
-            < strike_config.uppercut_elbow_angle_threshold  # Threshold is a maximum
+        get_joint_angle(state, f"{side}_shoulder", f"{side}_elbow", f"{side}_wrist")
+        < strike_config.uppercut_elbow_angle_threshold  # Threshold is a maximum
     )
 
     # A hand returning to guard after a punch also rises fast with a bent
     # arm, but it is preceded by an extended arm while an uppercut starts
     # from a compact guard
     arm_extended = (
-            get_joint_angle(state, f"{side}_shoulder", f"{side}_elbow", f"{side}_wrist")
-            > strike_config.straight_angle_threshold
+        get_joint_angle(state, f"{side}_shoulder", f"{side}_elbow", f"{side}_wrist")
+        > strike_config.straight_angle_threshold
     )
 
     wrist_y = state.positions(f"{side}_wrist")[:, 1]
@@ -250,14 +251,16 @@ def detect_uppercut(
         rise_m = (start_y - end_y) * pixel_to_m_ratio[peak]
 
         if (
-                rise_m >= strike_config.min_uppercut_rise_m
-                and arm_tucked[peak]
-                and arm_bent[peak]
-                and not np.any(arm_extended[before])
+            rise_m >= strike_config.min_uppercut_rise_m
+            and arm_tucked[peak]
+            and arm_bent[peak]
+            and not np.any(arm_extended[before])
         ):
             detections[peak] = True
 
-    detections = merge_nearby_detections(detections, min_separation=strike_config.min_punch_peak_separation_frames)
+    detections = merge_nearby_detections(
+        detections, min_separation=strike_config.min_punch_peak_separation_frames
+    )
 
     return detections
 
@@ -266,8 +269,9 @@ def detect_uppercut(
 # Kick detection
 # ============================================================================================================
 
+
 def detect_kick(
-        state: PersonState, strike: Strike, strike_config: StrikeConfig
+    state: PersonState, strike: Strike, strike_config: StrikeConfig
 ) -> np.ndarray:
     """
     Detects whether a kick occurs.
@@ -350,6 +354,8 @@ def detect_kick(
         if np.any(shin_angle_kick | foot_high[window]):
             detections[peak] = True
 
-    detections = merge_nearby_detections(detections, min_separation=strike_config.min_kick_peak_separation_frames)
+    detections = merge_nearby_detections(
+        detections, min_separation=strike_config.min_kick_peak_separation_frames
+    )
 
     return detections

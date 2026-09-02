@@ -19,7 +19,15 @@ class VideoAnnotator:
     """
 
     def __init__(self, config: Config):
-        self.person_detections: list[tuple[PersonState, StrikeDetections, np.ndarray, GuardDetections, np.ndarray | None]] = []
+        self.person_detections: list[
+            tuple[
+                PersonState,
+                StrikeDetections,
+                np.ndarray,
+                GuardDetections,
+                np.ndarray | None,
+            ]
+        ] = []
         self.config = config
 
     def add_tracker(
@@ -27,7 +35,7 @@ class VideoAnnotator:
         states: PersonState,
         strike_detections: StrikeDetections,
         guard_detections: GuardDetections,
-        distance_per_frame: np.ndarray
+        distance_per_frame: np.ndarray,
     ):
         """
         Adds a PersonTrack object for VideoAnnotater to include in the video annotations.
@@ -207,7 +215,9 @@ class VideoAnnotator:
             width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
             height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
 
-            with open_video_writer(new_file_path, get_fps(video_path), (width, height)) as write_frame:
+            with open_video_writer(
+                new_file_path, get_fps(video_path), (width, height)
+            ) as write_frame:
                 frame_idx = 0
 
                 while True:
@@ -215,7 +225,13 @@ class VideoAnnotator:
                     if not success:
                         break
 
-                    for track, strike_detections, combo_frame_mask, guard_detections, distance_per_frame in self.person_detections:
+                    for (
+                        track,
+                        strike_detections,
+                        combo_frame_mask,
+                        guard_detections,
+                        distance_per_frame,
+                    ) in self.person_detections:
                         if frame_idx >= track.frames_processed:
                             continue
 

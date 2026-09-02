@@ -91,8 +91,9 @@ class TrackCache:
             if "model_name" in meta:
                 config_data.setdefault("pose_model", meta["model_name"])
 
-            tracker = PoseTracker(person=Person(**meta["person"]), config=Config(**config_data))
-
+            tracker = PoseTracker(
+                person=Person(**meta["person"]), config=Config(**config_data)
+            )
 
             states = {}
             for key, state_meta in meta["states"].items():

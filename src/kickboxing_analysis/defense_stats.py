@@ -6,6 +6,7 @@ from .defense_detections import GuardDetections
 from .geometry import count_segments
 from .tracking import PersonState
 
+
 @dataclass(frozen=True)
 class GuardStats:
     guard_up_time: float
@@ -14,7 +15,7 @@ class GuardStats:
 
 
 class DefenseStatsCalculator:
-    def __init__(self, person_state : PersonState, guard_detections: GuardDetections):
+    def __init__(self, person_state: PersonState, guard_detections: GuardDetections):
         self.person_state = person_state
         self.fps = person_state.fps
         self.guard_detections = guard_detections
@@ -29,7 +30,7 @@ class DefenseStatsCalculator:
         return GuardStats(
             guard_up_time=self.get_guard_up_time(),
             guard_up_time_percentage=self.get_guard_up_time_percentage(),
-            guard_drop_count=self.get_guard_dropped_count()
+            guard_drop_count=self.get_guard_dropped_count(),
         )
 
     def get_guard_up_time(self) -> float:
@@ -39,7 +40,9 @@ class DefenseStatsCalculator:
         Returns:
             The total time the guard is held up
         """
-        guard_up_time = (len(self.guard_detections.mask) - np.sum(self.guard_detections.mask)) / self.fps
+        guard_up_time = (
+            len(self.guard_detections.mask) - np.sum(self.guard_detections.mask)
+        ) / self.fps
         return guard_up_time
 
     def get_guard_up_time_percentage(self) -> float:
@@ -49,7 +52,9 @@ class DefenseStatsCalculator:
         Returns:
             The percentage of the video where the guard is being held up
         """
-        guard_up_time = (len(self.guard_detections.mask) - np.sum(self.guard_detections.mask))
+        guard_up_time = len(self.guard_detections.mask) - np.sum(
+            self.guard_detections.mask
+        )
         guard_up_time_percentage = guard_up_time / len(self.guard_detections.mask)
         return guard_up_time_percentage
 

@@ -1,4 +1,3 @@
-from collections import Counter
 from dataclasses import dataclass
 
 import numpy as np
@@ -46,7 +45,6 @@ class StrikingStats:
     mean_interval_s: float
     longest_rest_s: float
     busiest_window_size_s: float
-
 
 
 class StrikingStatsCalculator:
@@ -522,7 +520,6 @@ class StrikingStatsCalculator:
 
         return max(len(combo) for combo in combos)
 
-
     # ============================================================
     # Work rate statistics
     # ============================================================
@@ -564,7 +561,6 @@ class StrikingStatsCalculator:
 
         return float(np.max(np.diff(times)))
 
-
     # ============================================================
     # Fatigue statistics
     # ============================================================
@@ -573,4 +569,3 @@ class StrikingStatsCalculator:
         """
         Implement linear regression later
         """
-        pass

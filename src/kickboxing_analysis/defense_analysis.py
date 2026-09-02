@@ -21,4 +21,3 @@ class DefenseAnalyser:
         """
         To be added
         """
-        pass

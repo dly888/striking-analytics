@@ -45,7 +45,7 @@ class FootworkStatsCalculator:
             stance_width_mean=self.get_stance_width_mean(),
             stance_width_std_dev=self.get_stance_width_standard_deviation(),
             distance_travelled=self.get_total_distance_travelled(),
-            distance_travelled_cumsum=self.get_distance_travelled_cumsum()
+            distance_travelled_cumsum=self.get_distance_travelled_cumsum(),
         )
 
     def get_floor_counts(self) -> np.ndarray:
@@ -142,4 +142,4 @@ class FootworkStatsCalculator:
         diff = self.left_ankle_keypoints[:, :2] - self.right_ankle_keypoints[:, :2]
         widths = np.linalg.norm(diff, axis=1)
 
-        return  float(np.nanstd(widths))
+        return float(np.nanstd(widths))

@@ -4,9 +4,9 @@ import numpy as np
 
 from .config import StrikeConfig
 from .constants import SIDES, STRIKE_TYPES
-from .strike_detections import StrikeDetections, Strike
-from .strike_detectors import detect_hook, detect_kick, detect_straight, detect_uppercut
 from .features import get_speed_threshold
+from .strike_detections import Strike, StrikeDetections
+from .strike_detectors import detect_hook, detect_kick, detect_straight, detect_uppercut
 from .tracking import PersonState
 
 STRIKE_DETECTORS = {
@@ -37,7 +37,9 @@ class StrikeAnalyser:
         )
         mask = np.stack(
             [
-                STRIKE_DETECTORS[strike.strike_type](self.track, strike, self.strike_config)
+                STRIKE_DETECTORS[strike.strike_type](
+                    self.track, strike, self.strike_config
+                )
                 for strike in strikes
             ]
         ).astype(bool)

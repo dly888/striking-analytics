@@ -13,7 +13,6 @@ class Config:
     tracker: str = "deepocsort.yaml"
 
 
-
 @dataclass(frozen=True)
 class FootworkConfig:
     # Window around a kick to not be considered as footwork movement
@@ -27,6 +26,7 @@ class FootworkConfig:
 
     # Maximum angle for a knee to be a check
     check_angle: int = 100
+
 
 @dataclass(frozen=True)
 class DefenseConfig:
