@@ -5,11 +5,107 @@ import subprocess
 import warnings
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
+from dataclasses import dataclass
+from enum import Enum
 from functools import cache
 from pathlib import Path
 
 import cv2
 import numpy as np
+
+
+@dataclass(frozen=True)
+class VideoLimit:
+    """Maximum video characteristics that will be accepted."""
+
+    max_duration_s: float = 300.0
+    max_fps: float = 30.0
+    max_long_edge_px: int = 1280
+    max_pixels: int = 1280 * 720
+
+
+@dataclass(frozen=True)
+class VideoMetadata:
+    """Metadata from a video."""
+
+    fps: float
+    frame_count: float
+    width: float
+    height: float
+    duration_s: float
+
+
+class VideoValidationError(Enum):
+    """Reasons a video cannot be processed within the configured limits."""
+
+    UNREADABLE = "The video could not be opened."
+    INVALID_FPS = "The video has an invalid frame rate."
+    INVALID_FRAME_COUNT = "The video has an invalid frame count."
+    INVALID_WIDTH = "The video has an invalid width."
+    INVALID_HEIGHT = "The video has an invalid height."
+    INVALID_DURATION = "The video has an invalid duration."
+    DURATION_TOO_LONG = "The video is longer than the allowed duration."
+    FPS_TOO_HIGH = "The video frame rate is too high."
+    LONG_EDGE_TOO_LARGE = "The video resolution is too large."
+    TOO_MANY_PIXELS = "The video has too many pixels per frame."
+
+
+def get_video_metadata(video_path: Path) -> VideoMetadata:
+    """Return the metadata needed to validate a video.
+
+    Raises:
+        OSError: If OpenCV cannot open the video.
+    """
+
+    with open_video(video_path) as capture:
+        fps = capture.get(cv2.CAP_PROP_FPS)
+        frame_count = capture.get(cv2.CAP_PROP_FRAME_COUNT)
+        width = capture.get(cv2.CAP_PROP_FRAME_WIDTH)
+        height = capture.get(cv2.CAP_PROP_FRAME_HEIGHT)
+
+    duration_s = frame_count / fps if fps > 0 else float("nan")
+    return VideoMetadata(
+        fps=fps,
+        frame_count=frame_count,
+        width=width,
+        height=height,
+        duration_s=duration_s,
+    )
+
+
+def validate_video(
+    video_path: Path
+) -> tuple[bool, VideoValidationError | None]:
+    """Return whether a video is valid and its first validation error, if any."""
+
+    try:
+        metadata = get_video_metadata(video_path)
+    except OSError:
+        return False, VideoValidationError.UNREADABLE
+
+    if not np.isfinite(metadata.fps) or metadata.fps <= 0:
+        return False, VideoValidationError.INVALID_FPS
+    if not np.isfinite(metadata.frame_count) or metadata.frame_count <= 0:
+        return False, VideoValidationError.INVALID_FRAME_COUNT
+    if not np.isfinite(metadata.width) or metadata.width <= 0:
+        return False, VideoValidationError.INVALID_WIDTH
+    if not np.isfinite(metadata.height) or metadata.height <= 0:
+        return False, VideoValidationError.INVALID_HEIGHT
+    if not np.isfinite(metadata.duration_s) or metadata.duration_s <= 0:
+        return False, VideoValidationError.INVALID_DURATION
+
+    limit = VideoLimit()
+
+    if metadata.duration_s > limit.max_duration_s:
+        return False, VideoValidationError.DURATION_TOO_LONG
+    if metadata.fps > limit.max_fps:
+        return False, VideoValidationError.FPS_TOO_HIGH
+    if max(metadata.width, metadata.height) > limit.max_long_edge_px:
+        return False, VideoValidationError.LONG_EDGE_TOO_LARGE
+    if metadata.width * metadata.height > limit.max_pixels:
+        return False, VideoValidationError.TOO_MANY_PIXELS
+
+    return True, None
 
 
 @contextmanager
