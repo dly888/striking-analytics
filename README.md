@@ -122,8 +122,8 @@ result = kba.analyse_video(
     video_path=Path("clip.mp4"),
     person=person,
     cache_path=Path("cache/clip.npz"),
-    model="yolo26s-pose.pt",
-    config=kba.Config(),
+    # Use "deepocsort.yaml" to prioritise consistent fighter IDs through clinches.
+    config=kba.Config(tracker="deepocsort.yaml"),
     strike_config=kba.StrikeConfig(),
 )
 
