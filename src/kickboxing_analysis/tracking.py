@@ -72,8 +72,8 @@ def smooth_keypoints(
 
 
 def apply_kalman_filter(
-        keypoints: np.ndarray,
-        fps: float,
+    keypoints: np.ndarray,
+    fps: float,
 ) -> np.ndarray:
     """Applies a constant-velocity Kalman filter to keypoint positions."""
     dt = 1 / fps
@@ -99,12 +99,12 @@ def apply_kalman_filter(
         )
 
         sigma_a = 100.0
-        kalman_filter.processNoiseCov = sigma_a ** 2 * np.array(
+        kalman_filter.processNoiseCov = sigma_a**2 * np.array(
             [
-                [dt ** 4 / 4, 0, dt ** 3 / 2, 0],
-                [0, dt ** 4 / 4, 0, dt ** 3 / 2],
-                [dt ** 3 / 2, 0, dt ** 2, 0],
-                [0, dt ** 3 / 2, 0, dt ** 2],
+                [dt**4 / 4, 0, dt**3 / 2, 0],
+                [0, dt**4 / 4, 0, dt**3 / 2],
+                [dt**3 / 2, 0, dt**2, 0],
+                [0, dt**3 / 2, 0, dt**2],
             ],
             dtype=np.float32,
         )
@@ -170,9 +170,7 @@ class PoseTracker:
     Tracks a person's pose keypoints and bounding boxes using YOLO pose model.
     """
 
-    def __init__(
-            self, person: Person, config: Config
-    ):
+    def __init__(self, person: Person, config: Config):
         self.person_states: dict[int, PersonState] = {}
         self.config = config
         self.model = YOLO(config.pose_model)
@@ -199,9 +197,9 @@ class PoseTracker:
         raise ValueError("Person not tracked.")
 
     def track(
-            self,
-            video_path: Path,
-            track_progress: Callable[[int, int], None] | None = None,
+        self,
+        video_path: Path,
+        track_progress: Callable[[int, int], None] | None = None,
     ) -> None:
         """
         Runs model on video and tracks the state(boxes, keypoints) of the person in the video.
@@ -253,11 +251,11 @@ class PoseTracker:
         }
 
     def densify(
-            self,
-            track_id: int,
-            frames: dict[int, tuple],
-            frames_processed: int,
-            fps: float,
+        self,
+        track_id: int,
+        frames: dict[int, tuple],
+        frames_processed: int,
+        fps: float,
     ) -> PersonState:
         """
         Converts data tracked from model into PersonTrack object.
