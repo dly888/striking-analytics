@@ -20,8 +20,10 @@ class VideoLimit:
 
     max_duration_s: float = 300.0
     max_fps: float = 30.0
-    max_long_edge_px: int = 1280
-    max_pixels: int = 1280 * 720
+    max_long_edge_px: int = 1920
+    max_pixels: int = 1920 * 1080
+    duration_tolerance_s: float = 1.0
+    fps_tolerance: float = 0.1
 
 
 @dataclass(frozen=True)
@@ -73,9 +75,7 @@ def get_video_metadata(video_path: Path) -> VideoMetadata:
     )
 
 
-def validate_video(
-    video_path: Path
-) -> tuple[bool, VideoValidationError | None]:
+def validate_video(video_path: Path) -> tuple[bool, VideoValidationError | None]:
     """Return whether a video is valid and its first validation error, if any."""
 
     try:
@@ -96,9 +96,9 @@ def validate_video(
 
     limit = VideoLimit()
 
-    if metadata.duration_s > limit.max_duration_s:
+    if metadata.duration_s > limit.max_duration_s + limit.duration_tolerance_s:
         return False, VideoValidationError.DURATION_TOO_LONG
-    if metadata.fps > limit.max_fps:
+    if metadata.fps > limit.max_fps + limit.fps_tolerance:
         return False, VideoValidationError.FPS_TOO_HIGH
     if max(metadata.width, metadata.height) > limit.max_long_edge_px:
         return False, VideoValidationError.LONG_EDGE_TOO_LARGE
@@ -178,7 +178,9 @@ def find_h264_ffmpeg() -> str | None:
 
 
 @contextmanager
-def open_video_writer(path: Path, fps: float, size: tuple[int, int]) -> Iterator[Callable[[np.ndarray], None]]:
+def open_video_writer(
+    path: Path, fps: float, size: tuple[int, int]
+) -> Iterator[Callable[[np.ndarray], None]]:
     """
     Context manager yielding a function that writes BGR frames to a video file.
 
