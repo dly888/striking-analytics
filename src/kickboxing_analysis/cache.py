@@ -58,7 +58,6 @@ class TrackCache:
             }
 
         meta = {
-            "model_name": pose_tracker.model_name,
             "config": asdict(pose_tracker.config),
             "person": asdict(pose_tracker.person),
             "states": state_meta,
@@ -85,9 +84,15 @@ class TrackCache:
         """
         with np.load(path) as data:
             meta = json.loads(bytes(data["_meta"]))
+            config_data = meta["config"]
 
-            tracker = PoseTracker(person=Person(**meta["person"]), config=Config(**meta["config"]),
-                                  model_name=meta["model_name"])
+            # Caches written before pose_model moved into Config stored it at
+            # the top level as model_name.
+            if "model_name" in meta:
+                config_data.setdefault("pose_model", meta["model_name"])
+
+            tracker = PoseTracker(person=Person(**meta["person"]), config=Config(**config_data))
+
 
             states = {}
             for key, state_meta in meta["states"].items():

@@ -15,7 +15,6 @@ from PIL import Image
 import kickboxing_analysis as kba
 
 CACHE_DIR = Path("cache")
-MODEL = "yolo26s-pose.pt"
 DISPLAY_WIDTH = 800
 PACING_BIN_S = 5.0
 FLOOR_SELECTOR_DIR = Path(__file__).parent / "components" / "floor_selector"
@@ -151,7 +150,6 @@ def analyse_session(video, person: kba.Person) -> None:
         video_path=video_path,
         person=person,
         cache_path=CACHE_DIR / f"{Path(video.name).stem}.npz",
-        model=MODEL,
         config=CONFIG,
         strike_config=STRIKE_CONFIG,
         track_progress=show_progress,

@@ -36,7 +36,6 @@ def analyse_video(
     video_path: Path,
     person: Person,
     cache_path: Path,
-    model: str,
     config: Config,
     strike_config: StrikeConfig,
     track_progress: Callable[[int, int], None] | None = None,
@@ -51,7 +50,6 @@ def analyse_video(
         video_path: Path of the video file.
         person: The person being tracked.
         cache_path: Path the tracked keypoints are cached at.
-        model: Name or path of the pose model.
         config: Config object.
         strike_config: StrikeConfig object.
         track_progress: Optional callback called after each frame with the
@@ -63,7 +61,7 @@ def analyse_video(
     if cache_path.exists():
         tracker = TrackCache.load_pose_tracker(path=cache_path)
     else:
-        tracker = PoseTracker(person=person, config=config, model_name=model)
+        tracker = PoseTracker(person=person, config=config)
         tracker.track(video_path=video_path, track_progress=track_progress)
         TrackCache.save_pose_tracker(pose_tracker=tracker, new_path=cache_path)
 

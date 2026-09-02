@@ -1,12 +1,17 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Literal
 
 
 @dataclass(frozen=True)
 class Config:
     keypoint_conf: float = 0.4
     keypoint_smoothing_window: int = 3
+    keypoint_filter: Literal["moving_average", "kalman"] = "moving_average"
+    pose_model: str = "yolo26s-pose.pt"
+    tracker: str = "deepocsort.yaml"
+
 
 
 @dataclass(frozen=True)

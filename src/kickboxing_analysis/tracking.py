@@ -7,6 +7,7 @@ from pathlib import Path
 
 import cv2
 import numpy as np
+
 from ultralytics import YOLO
 
 from .config import Config
@@ -14,31 +15,72 @@ from .constants import KEYPOINT_INDEX, N_KEYPOINTS, Stance
 from .video import get_fps
 
 
+def smooth_keypoints(
+    keypoints: np.ndarray,
+    window: int,
+) -> np.ndarray:
+    """
+    Smooth keypoints positions over time
+
+    Args:
+        keypoints: Keypoints to be smoothed
+        window: Size of the window where keypoints will be smoothed
+
+    Returns:
+        Numpy array of the smoothed keypoints
+    """
+    if window <= 1:
+        return keypoints
+
+    if window % 2 == 0:
+        raise ValueError("Smoothing window must be odd.")
+
+    smoothed = keypoints.copy()
+    kernel = np.ones(window, dtype=float)
+
+    for keypoint_idx in range(keypoints.shape[1]):
+        for axis in range(2):  # x and y only
+            values = keypoints[:, keypoint_idx, axis]
+            visible = np.isfinite(values)
+
+            # Replace NaNs with zero
+            values_filled = np.where(visible, values, 0.0)
+
+            # Sum of valid values in each window
+            num = np.convolve(
+                values_filled,
+                kernel,
+                mode="same",
+            )
+
+            # Number of valid values in each window
+            den = np.convolve(
+                visible.astype(float),
+                kernel,
+                mode="same",
+            )
+
+            result = np.full_like(values, np.nan, dtype=float)
+            valid = den > 0
+            result[valid] = num[valid] / den[valid]
+
+            # Dont fill originally missing observations.
+            result[~visible] = np.nan
+            smoothed[:, keypoint_idx, axis] = result
+
+    return smoothed
+
+
 def apply_kalman_filter(
         keypoints: np.ndarray,
         fps: float,
 ) -> np.ndarray:
-    """
-    Applies a Kalman filter to the xy position of every keypoint.
-
-    Args:
-        keypoints: Array of shape (frames, N_KEYPOINTS, 3)
-                   containing x, y, confidence.
-        fps: Video FPS.
-
-    Returns:
-        Kalman-filtered keypoints of the same shape.
-    """
-
+    """Applies a constant-velocity Kalman filter to keypoint positions."""
     dt = 1 / fps
-
     filtered = keypoints.copy()
 
     for keypoint_idx in range(N_KEYPOINTS):
-
         positions = keypoints[:, keypoint_idx, :2]
-
-        # Find first valid observation
         valid = ~np.isnan(positions).any(axis=1)
 
         if not valid.any():
@@ -46,57 +88,37 @@ def apply_kalman_filter(
 
         first_idx = np.flatnonzero(valid)[0]
         x0, y0 = positions[first_idx]
-
-        kf = cv2.KalmanFilter(4, 2)
-
-        kf.statePost = np.array(
-            [[x0], [y0], [0], [0]],
+        kalman_filter = cv2.KalmanFilter(4, 2)
+        kalman_filter.statePost = np.array([[x0], [y0], [0], [0]], dtype=np.float32)
+        kalman_filter.transitionMatrix = np.array(
+            [[1, 0, dt, 0], [0, 1, 0, dt], [0, 0, 1, 0], [0, 0, 0, 1]],
             dtype=np.float32,
         )
-
-        kf.transitionMatrix = np.array([
-            [1, 0, dt, 0],
-            [0, 1, 0, dt],
-            [0, 0, 1,  0],
-            [0, 0, 0,  1],
-        ], dtype=np.float32)
-
-        kf.measurementMatrix = np.array([
-            [1, 0, 0, 0],
-            [0, 1, 0, 0],
-        ], dtype=np.float32)
+        kalman_filter.measurementMatrix = np.array(
+            [[1, 0, 0, 0], [0, 1, 0, 0]], dtype=np.float32
+        )
 
         sigma_a = 100.0
-
-        kf.processNoiseCov = sigma_a ** 2 * np.array([
-            [dt ** 4 / 4, 0,          dt ** 3 / 2, 0],
-            [0,            dt ** 4 / 4, 0,          dt ** 3 / 2],
-            [dt ** 3 / 2, 0,          dt ** 2,     0],
-            [0,            dt ** 3 / 2, 0,          dt ** 2],
-        ], dtype=np.float32)
-
-        kf.measurementNoiseCov = np.eye(2, dtype=np.float32) * 10
-
-        kf.errorCovPost = np.diag([
-            10,
-            10,
-            1000,
-            1000,
-        ]).astype(np.float32)
+        kalman_filter.processNoiseCov = sigma_a ** 2 * np.array(
+            [
+                [dt ** 4 / 4, 0, dt ** 3 / 2, 0],
+                [0, dt ** 4 / 4, 0, dt ** 3 / 2],
+                [dt ** 3 / 2, 0, dt ** 2, 0],
+                [0, dt ** 3 / 2, 0, dt ** 2],
+            ],
+            dtype=np.float32,
+        )
+        kalman_filter.measurementNoiseCov = np.eye(2, dtype=np.float32) * 10
+        kalman_filter.errorCovPost = np.diag([10, 10, 1000, 1000]).astype(np.float32)
 
         for frame_idx in range(first_idx, len(keypoints)):
-
             position = positions[frame_idx]
-
-            prediction = kf.predict()
+            kalman_filter.predict()
 
             if np.isnan(position).any():
                 continue
 
-            measurement = position.reshape(2, 1).astype(np.float32)
-
-            estimate = kf.correct(measurement)
-
+            estimate = kalman_filter.correct(position.reshape(2, 1).astype(np.float32))
             filtered[frame_idx, keypoint_idx, :2] = estimate[:2, 0]
 
     return filtered
@@ -149,12 +171,11 @@ class PoseTracker:
     """
 
     def __init__(
-            self, person: Person, config: Config, model_name: str = "yolo26s-pose.pt"
+            self, person: Person, config: Config
     ):
         self.person_states: dict[int, PersonState] = {}
-        self.model = YOLO(model_name)
-        self.model_name = model_name
         self.config = config
+        self.model = YOLO(config.pose_model)
         self.person = person
 
     def get_person_state(self, person: Person) -> PersonState:
@@ -199,7 +220,7 @@ class PoseTracker:
         results = self.model.track(
             source=str(video_path),
             persist=True,
-            tracker="bytetrack.yaml",
+            tracker=self.config.tracker,
             stream=True,
             classes=[0],
         )
@@ -265,10 +286,15 @@ class PoseTracker:
 
         keypoints[keypoints[:, :, 2] < self.config.keypoint_conf] = np.nan
 
-        keypoints = apply_kalman_filter(
-            keypoints=keypoints,
-            fps=fps,
-        )
+        if self.config.keypoint_filter == "moving_average":
+            keypoints = smooth_keypoints(
+                keypoints=keypoints,
+                window=self.config.keypoint_smoothing_window,
+            )
+        elif self.config.keypoint_filter == "kalman":
+            keypoints = apply_kalman_filter(keypoints=keypoints, fps=fps)
+        else:
+            raise ValueError(f"Unknown keypoint filter: {self.config.keypoint_filter}")
 
         # Currently assigns the same Person object to every tracked fighter, change this later
         return PersonState(track_id, keypoints, boxes, box_conf, fps, self.person)

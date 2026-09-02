@@ -21,7 +21,6 @@ def main(
     floor_edge2: list[tuple[float, float]],
     config: Config,
     strike_config: StrikeConfig,
-    model: str = "yolo26s-pose.pt",
     annotate: bool = False,
     debug: bool = False,
 ) -> None:
@@ -35,7 +34,6 @@ def main(
         cache_path: Path the tracked keypoints are cached at.
         floor_edge1: Two (x, y) points along one floor edge, near end first.
         floor_edge2: Two (x, y) points along the opposite edge, near end first.
-        model: Name or path of the pose model.
         config: Config object.
         strike_config: StrikeConfig object.
         annotate: Whether to write an annotated copy of the video, which
@@ -46,7 +44,6 @@ def main(
         video_path=video_path,
         person=person,
         cache_path=cache_path,
-        model=model,
         config=config,
         strike_config=strike_config,
     )
@@ -117,6 +114,9 @@ if __name__ == "__main__":
         # Estimated from the mat seams, adjust for other footage
         floor_edge1=[(408, 1070), (600, 640)],
         floor_edge2=[(1612, 1070), (1400, 640)],
-        model=str(PROJECT_ROOT / "models" / "yolo26s-pose.pt"),
+        config=Config(
+            pose_model=str(PROJECT_ROOT / "models" / "yolo26s-pose.pt"),
+        ),
+        strike_config=StrikeConfig(),
         annotate=True,
     )
