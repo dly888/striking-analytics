@@ -1,0 +1,21 @@
+# Deep OC-SORT with re-identification enabled.
+tracker_type: deepocsort
+track_high_thresh: 0.3
+track_low_thresh: 0.1
+new_track_thresh: 0.3
+track_buffer: 30
+match_thresh: 0.8
+fuse_score: true
+
+# Observation-centric motion matching.
+delta_t: 3
+inertia: 0.2
+use_byte: false
+gmc_method: sparseOptFlow
+
+# Appearance-based re-identification.
+with_reid: true
+model: auto
+proximity_thresh: 0.5
+appearance_thresh: 0.9
+alpha_fixed_emb: 0.95
